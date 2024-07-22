@@ -11,13 +11,16 @@ all_data = {}
 weight_data = {}
 station_data = {}
 
+directory = 'data'
+prefix = '餐线消费数据-'
+
 def getDate():
     # Return the current date
     return datetime.now().strftime('%Y-%m-%d')
 
 def getWeights(startDate, endDate):
     global weight_data
-    all_data = {}
+
     api_url = "http://10.10.0.44/beijingdev/dev/getrecord"
     startDateForm = startDate.strftime('%Y-%m-%d')
     endDateForm = endDate.strftime('%Y-%m-%d')
@@ -46,8 +49,6 @@ def getWeights(startDate, endDate):
 
 def getStation(filename):
     global station_data
-    directory = 'data'
-    prefix = '餐线消费数据-'
 
     file_path = os.path.join(directory, f'{prefix}{filename}.xlsx')
     excel_file = pd.read_excel(file_path, sheet_name=None)  # Read the Excel file
@@ -62,8 +63,6 @@ def getStation(filename):
 def getAllStations():
     global station_data
     station_data = {}
-    directory = 'data'
-    prefix = '餐线消费数据-'
 
     for filename in os.listdir(directory):
         if filename.startswith(prefix) and filename.endswith(".xlsx"):
@@ -80,13 +79,15 @@ def analyze():
     return stationRanks
 
 
-def report(startDate, endDate):
-    startDate = datetime.strptime(startDate, '%Y-%m-%d')
-    endDate = datetime.strptime(endDate, '%Y-%m-%d')
+def report(startDateStr, endDateStr):
+    startDate = datetime.strptime(startDateStr, '%Y-%m-%d')
+    endDate = datetime.strptime(endDateStr, '%Y-%m-%d')
 
-    getAllStations()
+    #getAllStations()
+    #getWeights(startDate, endDate) # puts weights in dict
+    getStation(startDateStr)
     getWeights(startDate, endDate) # puts weights in dict
-    
+
     if not station_data:
         print("No station data found for the given date range.")
         return
@@ -95,7 +96,7 @@ def report(startDate, endDate):
         return
 
     print(f"Station Data: {station_data}")
-    #print(f"Weight Data: {weight_data}")
+    print(f"Weight Data: {weight_data}")
     # Merge the Excel data and API data based on user ID (peopleCard)
 
     #merge_data()
@@ -119,15 +120,10 @@ def report(startDate, endDate):
 
 def merge_data():
     global all_data
-    conversion_table = pd.read_excel('conversion.xls')  # Assuming CSV format, adjust as needed
-
-
-    
-    
-
+    conversion_table = pd.read_excel('conversion.xls')
     # Save or further process the result
     all_data.to_csv('merged_data.csv', index=False)
     
 current_date = getDate()
 print(f"Current Date: {current_date}")
-report("2024-5-13", current_date)
+report("2024-05-15", "2024-05-15")
