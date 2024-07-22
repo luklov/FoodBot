@@ -1,6 +1,6 @@
 import pandas as pd
 import requests
-
+import json
 import os
 from datetime import datetime, timedelta
 station_df = []
@@ -96,10 +96,10 @@ def report(startDateStr, endDateStr):
         return
 
     print(f"Station Data: {station_data}")
-    print(f"Weight Data: {weight_data}")
+    #print(f"Weight Data: {weight_data}")
     # Merge the Excel data and API data based on user ID (peopleCard)
 
-    #merge_data()
+    merge_data()
     '''
     if merged_data.empty:
         print("No matching data found between station data and weight data.")
@@ -120,10 +120,40 @@ def report(startDateStr, endDateStr):
 
 def merge_data():
     global all_data
+    all_data = {}
+
+    for day, df in station_data.items():
+        member_id = df['会员编号'] # Get list of IDs on each day
+        pos_name = df['POS机名称'] # Get list of POS names on each day
+        for i, cnt_id in enumerate(member_id):
+            # Check if the ID exists in the conversion table
+            api_id = convert_id(cnt_id)
+            if api_id not in all_data:
+                all_data[api_id] = {}
+            if day not in all_data[api_id]:
+                all_data[api_id][day] = {'station': [], 'weights': []}
+            
+            all_data[api_id][day]['station'].append({pos_name[i]})
+            if api_id in weight_data: # Check if the ID exists in the weight data
+                weight_info = weight_data[api_id]
+                all_data[api_id][day]['weights'].append({weight_info})
+
+    # Save the dictionary to a JSON file
+    with open('merged_data.json', 'w') as f:
+        json.dump(all_data, f, default=set_default) 
+           
+def set_default(obj):
+    if isinstance(obj, set):
+        return list(obj)
+    raise TypeError
+
+def convert_id(cnt_id):
     conversion_table = pd.read_excel('conversion.xls')
-    # Save or further process the result
-    all_data.to_csv('merged_data.csv', index=False)
-    
+    conversion_dict = dict(zip(conversion_table['卡号'], conversion_table['会员编号'])) # cnt_id, api_id
+
+    api_id = conversion_dict.get(cnt_id, None)
+    return api_id
+
 current_date = getDate()
 print(f"Current Date: {current_date}")
 report("2024-05-15", "2024-05-15")
