@@ -1,5 +1,9 @@
 import pandas as pd
 import requests
+
+import matplotlib.pyplot as plt
+import matplotlib.dates as mdates
+
 import json
 import os
 from datetime import datetime, timedelta
@@ -10,6 +14,7 @@ station_data = {}
 
 conversion_dict = {}
 reverse_conversion_dict = {}
+daily_counter_wastage = {}
 
 directory = 'data'
 prefix = '餐线消费数据-'
@@ -77,9 +82,13 @@ def getStation(filename):
         station_data[filename] = list(excel_file.values())[0]  # Store the DataFrame in the dictionary
     else:
         for sheet_name, sheet_data in excel_file.items():
-            #api_id = convert_id(cnt_id) # short to long ID
-            # insert code here
-            station_data[sheet_name] = sheet_data  # Store the DataFrame in the dictionary
+            # convert 'Jun 3' to date format
+            date_object = datetime.strptime(sheet_name, '%b %d').date()
+            # set the year
+            new_date_object = date_object.replace(year=2024)
+            new_sheet_name = new_date_object.strftime('%Y-%m-%d')
+            
+            station_data[new_sheet_name] = sheet_data  # Store the DataFrame in the dictionary
     return station_data
 
 def getAllStations():
@@ -122,8 +131,6 @@ def report(startDateStr, endDateStr):
     make_conversion_dicts()
     merge_data()
 
-    '''stationRanks = analyze(merged_data)
-    makeReport(stationRanks)'''
     return
 
 def merge_data():
@@ -173,7 +180,7 @@ def merge_data():
     print(f"Found {len(found)} IDs and {len(notFound)} IDs were not found in the conversion table.")
     #print(notFound)
     # Save the dictionary to a JSON file
-    with open('combined_data/merged_data.json', 'w') as f:
+    with open('combined_data/merged_data2.json', 'w') as f:
         json.dump(all_data, f, default=set_default) 
 
 def categorize_data():
@@ -185,6 +192,8 @@ def categorize_data():
         'multiple_counters_no_weights': 0,
         'multiple_both': 0
     }
+
+    both_counter_weights = {}
 
     for member, member_data in all_data.items():
         for day, day_data in member_data.items():
@@ -207,8 +216,12 @@ def categorize_data():
                 categories['counters_no_weights'] += 1
             elif has_counters and has_weights:
                 categories['both'] += 1
+                if day in both_counter_weights:
+                    both_counter_weights[day] += 1
+                else:
+                    both_counter_weights[day] = 1
 
-    return categories
+    return categories, both_counter_weights
 
 def calculate_average_wastage():
     counter_wastage = {}
@@ -238,11 +251,110 @@ def calculate_average_wastage():
 
     return average_wastage, counter_wastage, counter_days
 
+def calculate_daily_average_wastage():
+    global daily_counter_wastage
+    daily_counter_wastage = {}
+
+    counter_totals = {}
+    counter_counts = {}
+
+    for member, member_data in all_data.items():
+        for day, day_data in member_data.items():
+            if day == 'name' or day == 'house' or day == 'yeargroup' or day == 'formclass': # Skip non-day data
+                continue
+            has_weights = 'weights' in day_data and day_data['weights']
+            has_counters = 'stations' in day_data and day_data['stations']
+
+            if has_weights and has_counters:
+                # Flatten the list of weights
+                flat_weights = [item for sublist in day_data['weights'] for item in sublist]
+                total_weight = sum(flat_weights)
+                weight_per_counter = total_weight / len(day_data['stations'])
+
+                for counter in day_data['stations']:
+                    if counter not in counter_totals:
+                        counter_totals[counter] = {}
+                        counter_counts[counter] = {}
+                    if day not in counter_totals[counter]:
+                        counter_totals[counter][day] = 0
+                        counter_counts[counter][day] = 0
+                    counter_totals[counter][day] += weight_per_counter
+                    counter_counts[counter][day] += 1
+
+    for counter, days in counter_totals.items():
+        for day, total in days.items():
+            if counter not in daily_counter_wastage:
+                daily_counter_wastage[counter] = {}
+            daily_counter_wastage[counter][day] = total / counter_counts[counter][day]
+
+def plot_counters():
+    plt.figure(figsize=(10, 6))
+
+    for counter, daily_wastage in daily_counter_wastage.items():
+        # Sort the dates
+        sorted_dates = sorted(daily_wastage.keys(), key=lambda date: datetime.strptime(date, '%Y-%m-%d'))
+        sorted_wastages = [daily_wastage[date] for date in sorted_dates]
+        plt.plot(sorted_dates, sorted_wastages, '-', label=counter)
+
+    plt.gcf().autofmt_xdate()
+    plt.legend()
+    plt.show()
+
+def cumulative_plot():
+    global daily_counter_wastage
+    daily_counter_wastage = {}
+
+    for member, member_data in all_data.items():
+        for day, day_data in member_data.items():
+            if day == 'name' or day == 'house' or day == 'yeargroup' or day == 'formclass': # Skip non-day data
+                continue
+            has_weights = 'weights' in day_data and day_data['weights']
+            has_counters = 'stations' in day_data and day_data['stations']
+
+            if has_weights and has_counters:
+                # Flatten the list of weights
+                flat_weights = [item for sublist in day_data['weights'] for item in sublist]
+                total_weight = sum(flat_weights)
+
+                for counter in day_data['stations']:
+                    if counter not in daily_counter_wastage:
+                        daily_counter_wastage[counter] = {}
+                    if day not in daily_counter_wastage[counter]:
+                        daily_counter_wastage[counter][day] = 0
+                    daily_counter_wastage[counter][day] += total_weight
+
+    # Create a new dictionary to hold the cumulative wastage data
+    cumulative_counter_wastage = {}
+
+    for counter, daily_wastage in daily_counter_wastage.items():
+        cumulative_counter_wastage[counter] = {}
+        # Sort the dates
+        sorted_dates = sorted(daily_wastage.keys(), key=lambda date: datetime.strptime(date, '%Y-%m-%d'))
+        # Initialize the cumulative total
+        cumulative_total = 0
+        for date in sorted_dates:
+            # Add the wastage for the current day to the cumulative total
+            cumulative_total += daily_wastage[date]
+            # Store the cumulative total for the current day
+            cumulative_counter_wastage[counter][date] = cumulative_total
+
+    plt.figure(figsize=(10, 6))
+
+    for counter, daily_wastage in cumulative_counter_wastage.items():
+        # Sort the dates
+        sorted_dates = sorted(daily_wastage.keys(), key=lambda date: datetime.strptime(date, '%Y-%m-%d'))
+        sorted_wastages = [daily_wastage[date] for date in sorted_dates]
+        # Plot the data
+        plt.plot(sorted_dates, sorted_wastages, label=counter)
+
+    plt.legend()
+    plt.show()
+
 def set_default(obj):
     if isinstance(obj, set):
         return list(obj)
     raise TypeError
-
+    
 def convert_cnt_id(cnt_id): # short ID to long ID
     #print(conversion_dict)
     api_id = conversion_dict.get(cnt_id, None)
@@ -275,19 +387,28 @@ def rank_counters(average_wastage, total_wastage, counter_days):
 
     print("\nCounter Days Ranking:")
     for counter, days in counter_days_ranked:
-        print(f"{counter}: {days} grams")
+        print(f"{counter}: {days} days")
 
 if __name__ == "__main__":
     #current_date = getDate()
-    #report("2024-05-13", "2024-06-19") # Start date, end date
-    load_data()
+    report("2024-05-13", "2024-06-19") # Start date, end date
+    #load_data()
 
-    categories = categorize_data()
+    categories, both_counter_weights = categorize_data()
     for category, count in categories.items():
         print(f"{category}: {count} days")
 
+    print("\nNumber of both counters and weights occurring on each day:")
+    sorted_days = sorted(both_counter_weights.keys(), key=lambda date: datetime.strptime(date, '%Y-%m-%d'))
+    for day in sorted_days:
+        print(f"{day}: {both_counter_weights[day]} occurrences")
+
     print("\n")
-    
+
     average_wastage, total_wastage, counter_days = calculate_average_wastage()
 
     rank_counters(average_wastage, total_wastage, counter_days)
+
+    calculate_daily_average_wastage()
+    plot_counters()
+    cumulative_plot()
