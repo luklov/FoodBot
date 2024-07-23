@@ -176,4 +176,4 @@ def convert_api_id(api_id): # long ID to short ID, REVERSE
 if __name__ == "__main__":
     current_date = getDate()
     print(f"Current Date: {current_date}")
-    report("2024-05-13", current_date) # Start date, end date
+    report("2024-05-13", "2024-05-14") # Start date, end date
