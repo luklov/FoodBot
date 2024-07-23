@@ -14,6 +14,13 @@ reverse_conversion_dict = {}
 directory = 'data'
 prefix = '餐线消费数据-'
 
+def make_conversion_dicts():
+    global conversion_dict, reverse_conversion_dict
+    # Merge the Excel data and API data based on user ID (peopleCard)
+    conversion_table = pd.read_excel('conversion.xls')
+    conversion_dict = dict(zip(conversion_table['会员编号'], conversion_table['卡号']))
+    reverse_conversion_dict = {v: k for k, v in conversion_dict.items()}
+
 def getDate():
     # Return the current date
     return datetime.now().strftime('%Y-%m-%d')
@@ -81,7 +88,6 @@ def analyze():
 
 
 def report(startDateStr, endDateStr):
-    global conversion_dict, reverse_conversion_dict
     startDate = datetime.strptime(startDateStr, '%Y-%m-%d')
     endDate = datetime.strptime(endDateStr, '%Y-%m-%d')
 
@@ -99,10 +105,7 @@ def report(startDateStr, endDateStr):
 
     print(f"Station Data: {station_data}")
     #print(f"Weight Data: {weight_data}")
-    # Merge the Excel data and API data based on user ID (peopleCard)
-    conversion_table = pd.read_excel('conversion.xls')
-    conversion_dict = dict(zip(conversion_table['会员编号'], conversion_table['卡号']))
-    reverse_conversion_dict = {v: k for k, v in conversion_dict.items()}
+    make_conversion_dicts()
     merge_data()
 
     '''stationRanks = analyze(merged_data)
@@ -162,7 +165,7 @@ def convert_cnt_id(cnt_id): # short ID to long ID
         print(f"Converted from {cnt_id} to {api_id}")
     return api_id
 
-def convert_api_id(api_id): # long ID to short ID
+def convert_api_id(api_id): # long ID to short ID, REVERSE
     cnt_id = reverse_conversion_dict.get(api_id, None)
     if not cnt_id:
         print(f"API ID {api_id} not found in the conversion table.")
@@ -170,6 +173,7 @@ def convert_api_id(api_id): # long ID to short ID
         print(f"Converted from {api_id} to {cnt_id}")
     return cnt_id
 
-current_date = getDate()
-print(f"Current Date: {current_date}")
-report("2024-05-13", current_date) # Start date, end date
+if __name__ == "__main__":
+    current_date = getDate()
+    print(f"Current Date: {current_date}")
+    report("2024-05-13", current_date) # Start date, end date

@@ -1,7 +1,9 @@
 import os
 import re
 from datetime import datetime
-from main import reverse_conversion_dict, conversion_dict
+from main import convert_api_id, make_conversion_dicts
+import pandas as pd
+
 # Function to convert date string from "Month Day" to "YYYY-MM-DD"
 def convert_date_string(date_str):
     try:
@@ -44,7 +46,30 @@ def rename_files(folder_path):
 
     print("Renaming completed.")
 
-def convertIDs():
-    # Convert all IDs in the June data files
+def convert_ids_in_excel(file_path, sheet_name):
+    # Load the Excel file
+    xls = pd.ExcelFile(file_path)
 
-rename_files("data")
+    # Check if the sheet exists
+    if sheet_name in xls.sheet_names:
+        print(f"Processing sheet: {sheet_name}")
+        df = pd.read_excel(xls, sheet_name)
+
+        # Check if the "会员编号" column exists
+        if "会员编号" in df.columns:
+            # Replace the values in the "会员编号" column
+            for i in range(len(df["会员编号"])):
+                converted_id = convert_api_id(df.loc[i, "会员编号"])
+                df.loc[i, "会员编号"] = converted_id if converted_id else 'No Match'
+
+            # Write the modified DataFrame back to the Excel file
+            with pd.ExcelWriter(file_path, engine='openpyxl', mode='a', if_sheet_exists='replace') as writer:
+                df.to_excel(writer, sheet_name=sheet_name, index=False)
+        else:
+            print(f"Sheet '{sheet_name}' does not contain '会员编号' column.")
+    else:
+        print(f"Sheet '{sheet_name}' does not exist in the Excel file.")
+
+#rename_files("data")
+make_conversion_dicts()
+convert_ids_in_excel("data/餐线消费数据-June.xlsx", "Jun 19")
