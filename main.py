@@ -3,13 +3,13 @@ import requests
 import json
 import os
 from datetime import datetime, timedelta
-station_df = []
-
-station_names = []
 
 all_data = {}
 weight_data = {}
 station_data = {}
+
+conversion_dict = {}
+reverse_conversion_dict = {}
 
 directory = 'data'
 prefix = '餐线消费数据-'
@@ -43,7 +43,7 @@ def getWeights(startDate, endDate):
     for data in api_data:
         peopleCard = data.get('peopleCard')
         if peopleCard:
-            weight_data[peopleCard] = data
+            weight_data[peopleCard.lstrip('0')] = data
 
     return weight_data
 
@@ -55,8 +55,9 @@ def getStation(filename):
     if filename != 'June':
         station_data[filename] = list(excel_file.values())[0]  # Store the DataFrame in the dictionary
     else:
-        print(f"Filename: {filename}")
         for sheet_name, sheet_data in excel_file.items():
+            #api_id = convert_id(cnt_id) # short to long ID
+            # insert code here
             station_data[sheet_name] = sheet_data  # Store the DataFrame in the dictionary
     return station_data
 
@@ -75,17 +76,18 @@ def makeReport(stationRanks):
     return
 
 def analyze():
-    stationRanks = station_df['POS机名称'].value_counts().to_dict()
-    return stationRanks
+    
+    return
 
 
 def report(startDateStr, endDateStr):
+    global conversion_dict, reverse_conversion_dict
     startDate = datetime.strptime(startDateStr, '%Y-%m-%d')
     endDate = datetime.strptime(endDateStr, '%Y-%m-%d')
 
-    #getAllStations()
+    getAllStations()
     #getWeights(startDate, endDate) # puts weights in dict
-    getStation(startDateStr)
+    #getStation(startDateStr)
     getWeights(startDate, endDate) # puts weights in dict
 
     if not station_data:
@@ -98,62 +100,76 @@ def report(startDateStr, endDateStr):
     print(f"Station Data: {station_data}")
     #print(f"Weight Data: {weight_data}")
     # Merge the Excel data and API data based on user ID (peopleCard)
-
+    conversion_table = pd.read_excel('conversion.xls')
+    conversion_dict = dict(zip(conversion_table['会员编号'], conversion_table['卡号']))
+    reverse_conversion_dict = {v: k for k, v in conversion_dict.items()}
     merge_data()
-    '''
-    if merged_data.empty:
-        print("No matching data found between station data and weight data.")
-        return
-    
-    # Save merged file
-    if (startDate == endDate):
-        output_file_path = f"merges/merged_data_{startDate.strftime('%Y-%m-%d')}.xlsx"
-    else:
-        output_file_path = f"merges/merged_data_{startDate.strftime('%Y-%m-%d')}_{endDate.strftime('%Y-%m-%d')}.xlsx"
 
-    os.makedirs(os.path.dirname(output_file_path), exist_ok=True)
-    merged_data.to_excel(output_file_path, index=False)
-
-    stationRanks = analyze(merged_data)
+    '''stationRanks = analyze(merged_data)
     makeReport(stationRanks)'''
     return
 
 def merge_data():
     global all_data
     all_data = {}
-
+    found, notFound = [], []
+    # print first 10 entries in weight_data
+    for key in list(weight_data.keys())[:10]:
+        print(key, weight_data[key])
     for day, df in station_data.items():
+        print("DAY: ", day)
+
         member_id = df['会员编号'] # Get list of IDs on each day
         pos_name = df['POS机名称'] # Get list of POS names on each day
         for i, cnt_id in enumerate(member_id):
-            # Check if the ID exists in the conversion table
-            api_id = convert_id(cnt_id)
-            if api_id not in all_data:
-                all_data[api_id] = {}
-            if day not in all_data[api_id]:
-                all_data[api_id][day] = {'station': [], 'weights': []}
+            api_id = convert_cnt_id(cnt_id) # short to long ID
+            if not api_id:
+                notFound.append(cnt_id) 
+                continue # Skip the person if the ID cannot be converted
+            found.append(cnt_id)
+            api_id = str(int(api_id))
             
-            all_data[api_id][day]['station'].append({pos_name[i]})
+            if cnt_id not in all_data:
+                all_data[cnt_id] = {}
+            if day not in all_data[cnt_id]:
+                all_data[cnt_id][day] = {'station': [], 'weights': []}
+            
+            all_data[cnt_id][day]['station'].append(pos_name[i])
+            
+            
             if api_id in weight_data: # Check if the ID exists in the weight data
+                print("Weight data found :", weight_data[api_id])
                 weight_info = weight_data[api_id]
-                all_data[api_id][day]['weights'].append({weight_info})
+                all_data[cnt_id][day]['weights'].append(weight_info)
 
+    print(f"Found {len(found)} IDs and {len(notFound)} IDs were not found in the conversion table.")
+    print(notFound)
     # Save the dictionary to a JSON file
-    with open('merged_data.json', 'w') as f:
+    with open('combined_data/merged_data.json', 'w') as f:
         json.dump(all_data, f, default=set_default) 
-           
+
 def set_default(obj):
     if isinstance(obj, set):
         return list(obj)
     raise TypeError
 
-def convert_id(cnt_id):
-    conversion_table = pd.read_excel('conversion.xls')
-    conversion_dict = dict(zip(conversion_table['卡号'], conversion_table['会员编号'])) # cnt_id, api_id
-
+def convert_cnt_id(cnt_id): # short ID to long ID
+    #print(conversion_dict)
     api_id = conversion_dict.get(cnt_id, None)
+    if not api_id:
+        print(f"ID {cnt_id} not found in the conversion table.")
+    else:
+        print(f"Converted from {cnt_id} to {api_id}")
     return api_id
+
+def convert_api_id(api_id): # long ID to short ID
+    cnt_id = reverse_conversion_dict.get(api_id, None)
+    if not cnt_id:
+        print(f"API ID {api_id} not found in the conversion table.")
+    else:
+        print(f"Converted from {api_id} to {cnt_id}")
+    return cnt_id
 
 current_date = getDate()
 print(f"Current Date: {current_date}")
-report("2024-05-15", "2024-05-15")
+report("2024-05-13", current_date) # Start date, end date
