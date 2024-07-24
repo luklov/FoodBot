@@ -8,6 +8,10 @@ import json
 import os
 from datetime import datetime, timedelta
 
+from matplotlib.font_manager import FontProperties
+
+font = FontProperties(fname="/System/Library/Fonts/PingFang.ttc")
+
 all_data = {}
 weight_data = {}
 station_data = {}
@@ -18,6 +22,7 @@ daily_counter_wastage = {}
 
 directory = 'data'
 prefix = '餐线消费数据-'
+
 
 def make_conversion_dicts():
     global conversion_dict, reverse_conversion_dict
@@ -142,7 +147,7 @@ def merge_data():
         print(key, weight_data[key])'''
     for day, df in station_data.items():
         print("DAY: ", day)
-
+        vis_members = {}
         member_id = df['会员编号'] # Get list of IDs on each day
         pos_name = df['POS机名称'] # Get list of POS names on each day
         for i, cnt_id in enumerate(member_id):
@@ -152,11 +157,11 @@ def merge_data():
             if not api_id: # Skip the person if the ID cannot be converted
                 notFound.append(cnt_id) 
                 continue 
-            if api_id == 1634029292:
-                print("ID 1634029292 found") # Me
+    
             found.append(cnt_id)
             api_id = str(int(api_id))
-            
+            if day == '2024-05-15' and  api_id == "1820210565":
+                print("sab")
             if cnt_id not in all_data:
                 all_data[cnt_id] = {}
             if day not in all_data[cnt_id]:
@@ -165,12 +170,13 @@ def merge_data():
             all_data[cnt_id][day]['stations'].append(pos_name[i])
             
             
-            if api_id in weight_data: # Check if the ID exists in the weight data
-                #print("Weight data found :", weight_data[api_id])
+            if api_id in weight_data and api_id not in vis_members: # Check if the ID exists in the weight data
+                vis_members[api_id] = True
                 weight_info = weight_data[api_id]
                 if day in weight_info:
                     #print("Weight data found :", weight_info[day])
-                    all_data[cnt_id][day]['weights'].append(weight_info[day])
+                    for weight in weight_info[day]: 
+                        all_data[cnt_id][day]['weights'].append(weight)
                 if 'name' not in all_data[cnt_id]:
                     all_data[cnt_id]['name'] = weight_info['peopleName']
                     all_data[cnt_id]['house'] = weight_info['house']
@@ -180,7 +186,7 @@ def merge_data():
     print(f"Found {len(found)} IDs and {len(notFound)} IDs were not found in the conversion table.")
     #print(notFound)
     # Save the dictionary to a JSON file
-    with open('combined_data/merged_data2.json', 'w') as f:
+    with open('combined_data/merged_data.json', 'w') as f:
         json.dump(all_data, f, default=set_default) 
 
 def categorize_data():
@@ -235,9 +241,7 @@ def calculate_average_wastage():
             has_counters = 'stations' in day_data and day_data['stations']
 
             if has_weights and has_counters:
-                # Flatten the list of weights
-                flat_weights = [item for sublist in day_data['weights'] for item in sublist]
-                total_weight = sum(flat_weights)
+                total_weight = sum(day_data['weights'])
                 weight_per_counter = total_weight / len(day_data['stations'])
 
                 for counter in day_data['stations']:
@@ -266,9 +270,7 @@ def calculate_daily_average_wastage():
             has_counters = 'stations' in day_data and day_data['stations']
 
             if has_weights and has_counters:
-                # Flatten the list of weights
-                flat_weights = [item for sublist in day_data['weights'] for item in sublist]
-                total_weight = sum(flat_weights)
+                total_weight = sum(day_data['weights'])
                 weight_per_counter = total_weight / len(day_data['stations'])
 
                 for counter in day_data['stations']:
@@ -297,7 +299,7 @@ def plot_counters():
         plt.plot(sorted_dates, sorted_wastages, '-', label=counter)
 
     plt.gcf().autofmt_xdate()
-    plt.legend()
+    plt.legend(prop = font)
     plt.show()
 
 def cumulative_plot():
@@ -312,9 +314,7 @@ def cumulative_plot():
             has_counters = 'stations' in day_data and day_data['stations']
 
             if has_weights and has_counters:
-                # Flatten the list of weights
-                flat_weights = [item for sublist in day_data['weights'] for item in sublist]
-                total_weight = sum(flat_weights)
+                total_weight = sum(day_data['weights'])
 
                 for counter in day_data['stations']:
                     if counter not in daily_counter_wastage:
@@ -337,7 +337,7 @@ def cumulative_plot():
             cumulative_total += daily_wastage[date]
             # Store the cumulative total for the current day
             cumulative_counter_wastage[counter][date] = cumulative_total
-
+    
     plt.figure(figsize=(10, 6))
 
     for counter, daily_wastage in cumulative_counter_wastage.items():
@@ -345,9 +345,10 @@ def cumulative_plot():
         sorted_dates = sorted(daily_wastage.keys(), key=lambda date: datetime.strptime(date, '%Y-%m-%d'))
         sorted_wastages = [daily_wastage[date] for date in sorted_dates]
         # Plot the data
-        plt.plot(sorted_dates, sorted_wastages, label=counter)
-
-    plt.legend()
+        plt.plot(sorted_dates, sorted_wastages, '-', label=counter)
+    
+    plt.gcf().autofmt_xdate()  # Optional: for better formatting of date labels
+    plt.legend(prop = font)
     plt.show()
 
 def set_default(obj):
