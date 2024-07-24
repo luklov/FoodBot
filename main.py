@@ -131,7 +131,7 @@ def report(startDateStr, endDateStr):
         print("No weight data found for the given date range.")
         return
 
-    print(f"Station Data: {station_data}")
+    #print(f"Station Data: {station_data}")
     #print(f"Weight Data: {weight_data}")
     make_conversion_dicts()
     merge_data()
@@ -160,8 +160,8 @@ def merge_data():
     
             found.append(cnt_id)
             api_id = str(int(api_id))
-            if day == '2024-05-15' and  api_id == "1820210565":
-                print("sab")
+            #if day == '2024-05-15' and  api_id == "1820210565":
+            #    print("sab")
             if cnt_id not in all_data:
                 all_data[cnt_id] = {}
             if day not in all_data[cnt_id]:
@@ -229,9 +229,10 @@ def categorize_data():
 
     return categories, both_counter_weights
 
-def calculate_average_wastage():
+def calculate_totals():
     counter_wastage = {}
-    counter_days = {}
+    counter_tally = {}
+    counter_purchases = {}
 
     for member, member_data in all_data.items():
         for day, day_data in member_data.items():
@@ -247,13 +248,17 @@ def calculate_average_wastage():
                 for counter in day_data['stations']:
                     if counter not in counter_wastage:
                         counter_wastage[counter] = 0
-                        counter_days[counter] = 0
+                        counter_tally[counter] = 0
+                        counter_purchases[counter] = {}
+                    if day not in counter_purchases[counter]:
+                        counter_purchases[counter][day] = 0
                     counter_wastage[counter] += weight_per_counter
-                    counter_days[counter] += 1
+                    counter_tally[counter] += 1
+                    counter_purchases[counter][day] += 1
 
-    average_wastage = {counter: total_wastage / counter_days[counter] for counter, total_wastage in counter_wastage.items()}
+    average_wastage = {counter: total_wastage / counter_tally[counter] for counter, total_wastage in counter_wastage.items()}
 
-    return average_wastage, counter_wastage, counter_days
+    return average_wastage, counter_wastage, counter_tally, counter_purchases
 
 def calculate_daily_average_wastage():
     global daily_counter_wastage
@@ -289,7 +294,7 @@ def calculate_daily_average_wastage():
                 daily_counter_wastage[counter] = {}
             daily_counter_wastage[counter][day] = total / counter_counts[counter][day]
 
-def plot_counters():
+def plot_counter_averages():
     plt.figure(figsize=(10, 6))
 
     for counter, daily_wastage in daily_counter_wastage.items():
@@ -299,10 +304,10 @@ def plot_counters():
         plt.plot(sorted_dates, sorted_wastages, '-', label=counter)
 
     plt.gcf().autofmt_xdate()
+    plt.title('Counter Averages Over Time')  # Add a title
     plt.legend(prop = font)
-    plt.show()
 
-def cumulative_plot():
+def cumulative_plot_waste():
     global daily_counter_wastage
     daily_counter_wastage = {}
 
@@ -348,8 +353,37 @@ def cumulative_plot():
         plt.plot(sorted_dates, sorted_wastages, '-', label=counter)
     
     plt.gcf().autofmt_xdate()  # Optional: for better formatting of date labels
-    plt.legend(prop = font)
-    plt.show()
+    plt.title('Cumulative Food Waste Over Time')  # Add a title
+    plt.legend(prop=font)
+
+def cumulative_plot_buys():
+    global counter_purchases
+    cumulative_counter_purchases = {}
+
+    for counter, daily_purchases in counter_purchases.items():
+        cumulative_counter_purchases[counter] = {}
+        # Sort the dates
+        sorted_dates = sorted(daily_purchases.keys(), key=lambda date: datetime.strptime(date, '%Y-%m-%d'))
+        # Initialize the cumulative total
+        cumulative_total = 0
+        for date in sorted_dates:
+            # Add the purchases for the current day to the cumulative total
+            cumulative_total += daily_purchases[date]
+            # Store the cumulative total for the current day
+            cumulative_counter_purchases[counter][date] = cumulative_total
+    
+    plt.figure(figsize=(10, 6))
+
+    for counter, daily_purchases in cumulative_counter_purchases.items():
+        # Sort the dates
+        sorted_dates = sorted(daily_purchases.keys(), key=lambda date: datetime.strptime(date, '%Y-%m-%d'))
+        sorted_purchases = [daily_purchases[date] for date in sorted_dates]
+        # Plot the data
+        plt.plot(sorted_dates, sorted_purchases, '-', label=counter)
+    
+    plt.gcf().autofmt_xdate()  # Optional: for better formatting of date labels
+    plt.title('Cumulative Purchases Over Time')  # Add a title
+    plt.legend(prop=font)
 
 def set_default(obj):
     if isinstance(obj, set):
@@ -386,9 +420,9 @@ def rank_counters(average_wastage, total_wastage, counter_days):
     for counter, wastage in total_wastage_ranked:
         print(f"{counter}: {wastage} grams")
 
-    print("\nCounter Days Ranking:")
+    print("\nCounter Buys Ranking:")
     for counter, days in counter_days_ranked:
-        print(f"{counter}: {days} days")
+        print(f"{counter}: {days} buys")
 
 if __name__ == "__main__":
     #current_date = getDate()
@@ -406,10 +440,12 @@ if __name__ == "__main__":
 
     print("\n")
 
-    average_wastage, total_wastage, counter_days = calculate_average_wastage()
+    average_wastage, total_wastage, counter_tally, counter_purchases = calculate_totals()
 
-    rank_counters(average_wastage, total_wastage, counter_days)
+    rank_counters(average_wastage, total_wastage, counter_tally)
+    cumulative_plot_buys()
 
     calculate_daily_average_wastage()
-    plot_counters()
-    cumulative_plot()
+    plot_counter_averages()
+    cumulative_plot_waste()
+    plt.show()
