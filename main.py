@@ -36,9 +36,9 @@ def getDate():
     # Return the current date
     return datetime.now().strftime('%Y-%m-%d')
 
-def load_data():
+def load_data(file_path = 'combined_data/merged_data.json'):
     global all_data
-    with open('combined_data/merged_data.json', 'r') as f:
+    with open(file_path, 'r') as f:
         all_data = json.load(f)
 
 def getWeights(startDate, endDate):
@@ -354,6 +354,52 @@ def cumulative_plot_waste(ax):
     ax.set_title('Cumulative Food Waste Over Time')  # Add a title
     ax.legend(prop=font)
 
+def cumulative_spec_plot_weights(ax, ospec):
+    spec_wastage = {}
+
+    for member, member_data in all_data.items():
+        member_spec = member_data.get(ospec)
+        if not member_spec: # Skip members without the specified attribute
+            print(f"Member {member} does not have a {ospec}.")
+            continue
+        if member_spec not in spec_wastage:
+            spec_wastage[member_spec] = {}
+        for day, day_data in member_data.items():
+            if day == 'name' or day == 'house' or day == 'yeargroup' or day == 'formclass': # Skip non-day data
+                continue
+            has_weights = 'weights' in day_data and day_data['weights']
+
+            if has_weights:
+                total_weight = sum(day_data['weights'])
+                if day not in spec_wastage[member_spec]:
+                    spec_wastage[member_spec][day] = 0
+                spec_wastage[member_spec][day] += total_weight 
+
+    cumulative_spec_wastage = {}
+
+    for spec, daily_wastage in spec_wastage.items():
+        cumulative_spec_wastage[spec] = {}
+        # Sort the dates
+        sorted_dates = sorted(daily_wastage.keys(), key=lambda date: datetime.strptime(date, '%Y-%m-%d'))
+        # Initialize the cumulative total
+        cumulative_total = 0
+        for date in sorted_dates:
+            # Add the wastage for the current day to the cumulative total
+            cumulative_total += daily_wastage[date]
+            # Store the cumulative total for the current day
+            cumulative_spec_wastage[spec][date] = cumulative_total
+
+    for spec, daily_wastage in cumulative_spec_wastage.items():
+        # Sort the dates
+        sorted_dates = sorted(daily_wastage.keys(), key=lambda date: datetime.strptime(date, '%Y-%m-%d'))
+        sorted_wastage = [daily_wastage[date] for date in sorted_dates]
+        # Plot the data
+        ax.plot(sorted_dates, sorted_wastage, '-', label=spec)
+
+    plt.gcf().autofmt_xdate()  # Optional: for better formatting of date labels
+    ax.set_title(f'Cumulative Wastage Over Time by {ospec}')  # Add a title
+    ax.legend(prop=font)
+
 def cumulative_plot_buys(ax):
     cumulative_counter_purchases = {}
 
@@ -421,8 +467,8 @@ def rank_counters(average_wastage, total_wastage, counter_days):
 
 if __name__ == "__main__":
     #current_date = getDate()
-    report("2024-05-13", "2024-06-19") # Start date, end date
-    #load_data()
+    #report("2024-05-13", "2024-06-19") # Start date, end date
+    load_data()
 
     categories, both_counter_weights = categorize_data()
     for category, count in categories.items():
@@ -445,9 +491,13 @@ if __name__ == "__main__":
     f, (ax1, ax2, ax3) = plt.subplots(1, 3, figsize=(18, 6))
 
     # Pass the appropriate Axes object to each plotting function
-    cumulative_plot_buys(ax1) # Plots cumulative purchases
-    cumulative_plot_waste(ax2) # Plots cumulative wastage
-    plot_counter_averages(ax3) # Plots counter averages
+    #cumulative_plot_buys(ax1) # Plots cumulative purchases
+    
+    #cumulative_spec_plot_weights(ax1, 'formclass') # Plots cumulative wastage by formclass
+    cumulative_plot_waste(ax1) # Plots cumulative wastage
+    cumulative_spec_plot_weights(ax2, 'yeargroup')
+    cumulative_spec_plot_weights(ax3, 'house') # Plots cumulative wastage by house
+    #plot_counter_averages(ax3) # Plots counter averages
 
     # Ensure the 'plots' folder exists
     os.makedirs('plots', exist_ok=True)
