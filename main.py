@@ -42,44 +42,6 @@ def load_data(file_path = 'combined_data/merged_data.json'):
     with open(file_path, 'r') as f:
         all_data = json.load(f)
 
-def getWeightsbyID(startDate, endDate):
-    global weight_data
-
-    api_url = "http://10.10.0.44/beijingdev/dev/getrecord"
-    startDateForm = startDate.strftime('%Y-%m-%d')
-    endDateForm = endDate.strftime('%Y-%m-%d')
-    params = {
-        "beginTime": startDateForm,
-        "endTime": endDateForm
-    }
-    try:
-        response = requests.get(api_url, params=params)
-        response.raise_for_status()
-        api_data = response.json()
-    except requests.exceptions.JSONDecodeError:
-        print(f"Error: Unable to decode JSON response from API. Response text: {response.text}")
-        api_data = []
-    except requests.exceptions.RequestException as e:
-        print(f"API request error: {e}")
-        api_data = []
-
-    # Store API data into the global dictionary
-    for data in api_data:
-        peopleCard = data.get('peopleCard')
-        cardNum = peopleCard.lstrip('0')
-        day = data.get('addTime').split(' ')[0]
-        if cardNum not in weight_data:
-            weight_data[cardNum] = {}
-            weight_data[cardNum]['peopleName'] = data.get('peopleName')
-            weight_data[cardNum]['house'] = data.get('house')
-            weight_data[cardNum]['yeargroup'] = data.get('yeargroup')
-            weight_data[cardNum]['formclass'] = data.get('formclass')
-        if day not in weight_data[cardNum]:
-            weight_data[cardNum][day] = []
-        weight_data[cardNum][day].append(data['weight'])
-
-    return weight_data
-
 def getWeightsbyDate(startDate, endDate):
     global weight_data
 
@@ -165,62 +127,11 @@ def report(startDateStr, endDateStr):
     #print(f"Station Data: {station_data}")
     #print(f"Weight Data: {weight_data}")
     make_conversion_dicts()
-    merge_dataALL(startDateStr, endDateStr)
+    merge_data(startDateStr, endDateStr)
 
     return
 
-def merge_data():
-    global all_data
-    all_data = {}
-    found, notFound = [], []
-    # print first 10 entries in weight_data
-    '''for key in list(weight_data.keys())[:10]:
-        print(key, weight_data[key])'''
-    for day, df in station_data.items():
-        print("DAY: ", day)
-        vis_members = {}
-        member_id = df['会员编号'] # Get list of IDs on each day
-        pos_name = df['POS机名称'] # Get list of POS names on each day
-        for i, cnt_id in enumerate(member_id):
-            if cnt_id == 'No Match': # Skip if ID in June data not convertable
-                continue
-            api_id = convert_cnt_id(cnt_id) # short to long ID
-            if not api_id: # Skip the person if the ID cannot be converted
-                notFound.append(cnt_id) 
-                continue 
-    
-            found.append(cnt_id)
-            api_id = str(int(api_id))
-            #if day == '2024-05-15' and  api_id == "1820210565":
-            #    print("sab")
-            if cnt_id not in all_data:
-                all_data[cnt_id] = {}
-            if day not in all_data[cnt_id]:
-                all_data[cnt_id][day] = {'stations': [], 'weights': []}
-
-            all_data[cnt_id][day]['stations'].append(pos_name[i])
-            
-            
-            if api_id in weight_data and api_id not in vis_members: # Check if the ID exists in the weight data
-                vis_members[api_id] = True
-                weight_info = weight_data[api_id]
-                if day in weight_info:
-                    #print("Weight data found :", weight_info[day])
-                    for weight in weight_info[day]: 
-                        all_data[cnt_id][day]['weights'].append(weight)
-                if 'name' not in all_data[cnt_id]:
-                    all_data[cnt_id]['name'] = weight_info['peopleName']
-                    all_data[cnt_id]['house'] = weight_info['house']
-                    all_data[cnt_id]['yeargroup'] = weight_info['yeargroup']
-                    all_data[cnt_id]['formclass'] = weight_info['formclass']
-
-    print(f"Found {len(found)} IDs and {len(notFound)} IDs were not found in the conversion table.")
-    #print(notFound)
-    # Save the dictionary to a JSON file
-    with open('combined_data/merged_data.json', 'w') as f:
-        json.dump(all_data, f, default=set_default) 
-
-def merge_dataALL(startDate, endDate):
+def merge_data(startDate, endDate):
     global all_data
     all_data = {}
     found1, found2 = 0, 0
