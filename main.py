@@ -15,6 +15,7 @@ font = FontProperties(fname="/System/Library/Fonts/PingFang.ttc")
 all_data = {}
 weight_data = {}
 station_data = {}
+weight_data = {}
 
 conversion_dict = {}
 reverse_conversion_dict = {}
@@ -41,7 +42,7 @@ def load_data(file_path = 'combined_data/merged_data.json'):
     with open(file_path, 'r') as f:
         all_data = json.load(f)
 
-def getWeights(startDate, endDate):
+def getWeightsbyID(startDate, endDate):
     global weight_data
 
     api_url = "http://10.10.0.44/beijingdev/dev/getrecord"
@@ -79,6 +80,46 @@ def getWeights(startDate, endDate):
 
     return weight_data
 
+def getWeightsbyDate(startDate, endDate):
+    global weight_data
+
+    api_url = "http://10.10.0.44/beijingdev/dev/getrecord"
+    startDateForm = startDate.strftime('%Y-%m-%d')
+    endDateForm = endDate.strftime('%Y-%m-%d')
+    params = {
+        "beginTime": startDateForm,
+        "endTime": endDateForm
+    }
+    try:
+        response = requests.get(api_url, params=params)
+        response.raise_for_status()
+        api_data = response.json()
+    except requests.exceptions.JSONDecodeError:
+        print(f"Error: Unable to decode JSON response from API. Response text: {response.text}")
+        api_data = []
+    except requests.exceptions.RequestException as e:
+        print(f"API request error: {e}")
+        api_data = []
+
+    # Store API data into the global dictionary
+    for data in api_data:
+        peopleCard = data.get('peopleCard')
+        cardNum = peopleCard.lstrip('0')
+        day = data.get('addTime').split(' ')[0]
+        if day not in weight_data:
+            weight_data[day] = {}
+        if cardNum not in weight_data[day]:
+            weight_data[day][cardNum] = {
+                'peopleName': data.get('peopleName'),
+                'house': data.get('house'),
+                'yeargroup': data.get('yeargroup'),
+                'formclass': data.get('formclass'),
+                'weights': []
+            }
+        weight_data[day][cardNum]['weights'].append(data['weight'])
+
+    return weight_data
+
 def getStation(filename):
     global station_data
 
@@ -105,17 +146,6 @@ def getAllStations():
         if filename.startswith(prefix) and filename.endswith(".xlsx"):
             getStation(filename.replace('.xlsx', '').replace('餐线消费数据-', ''))
 
-
-def makeReport(stationRanks):
-    for station, count in stationRanks.items():
-        print(f"Station: {station}, Count: {count}")
-    return
-
-def analyze():
-    
-    return
-
-
 def report(startDateStr, endDateStr):
     startDate = datetime.strptime(startDateStr, '%Y-%m-%d')
     endDate = datetime.strptime(endDateStr, '%Y-%m-%d')
@@ -123,7 +153,7 @@ def report(startDateStr, endDateStr):
     getAllStations()
     #getWeights(startDate, endDate) # puts weights in dict
     #getStation(startDateStr)
-    getWeights(startDate, endDate) # puts weights in dict
+    getWeightsbyDate(startDate, endDate) # puts weights in dict
 
     if not station_data:
         print("No station data found for the given date range.")
@@ -135,7 +165,7 @@ def report(startDateStr, endDateStr):
     #print(f"Station Data: {station_data}")
     #print(f"Weight Data: {weight_data}")
     make_conversion_dicts()
-    merge_data()
+    merge_dataALL(startDateStr, endDateStr)
 
     return
 
@@ -189,6 +219,73 @@ def merge_data():
     # Save the dictionary to a JSON file
     with open('combined_data/merged_data.json', 'w') as f:
         json.dump(all_data, f, default=set_default) 
+
+def merge_dataALL(startDate, endDate):
+    global all_data
+    all_data = {}
+    found1, found2 = 0, 0
+    statCount, weightCount = 0, 0
+    # Convert startDate and endDate to datetime objects
+    startDate = datetime.strptime(startDate, '%Y-%m-%d')
+    endDate = datetime.strptime(endDate, '%Y-%m-%d')
+
+    # Iterate over the dates in between
+    currentDate = startDate
+    while currentDate <= endDate:
+        day = currentDate.strftime('%Y-%m-%d')  # Convert the date back to a string
+
+        # Process station_data for the current day
+        if day in station_data:
+            df = station_data[day]
+            member_id = df['会员编号']  # Get list of IDs on each day
+            pos_name = df['POS机名称']  # Get list of POS names on each day
+
+            for i, cnt_id in enumerate(member_id):
+                if cnt_id == 'No Match':  # Skip if ID in June data not convertable
+                    continue
+                api_id = convert_cnt_id(cnt_id)  # short to long ID
+                if not api_id:  # Skip the person if the ID cannot be converted
+                    statCount += 1
+                    continue
+                
+                found1 += 1
+
+                if cnt_id not in all_data:
+                    all_data[cnt_id] = {}
+                if day not in all_data[cnt_id]:
+                    all_data[cnt_id][day] = {'stations': [], 'weights': []}
+
+                all_data[cnt_id][day]['stations'].append(pos_name[i])
+
+        # Process weight_data for the current day
+        if day in weight_data:
+            for api_id, weight_info in weight_data[day].items():
+                cnt_id = convert_api_id(api_id)
+                if not cnt_id:  # Skip the person if the ID cannot be converted
+                    weightCount += 1
+                    continue
+                found2 += 1
+                if cnt_id not in all_data:
+                    all_data[cnt_id] = {}
+                if day not in all_data[cnt_id]:
+                    all_data[cnt_id][day] = {'stations': [], 'weights': []}
+
+                for weight in weight_info['weights']:
+                    all_data[cnt_id][day]['weights'].append(weight)
+                if 'name' not in all_data[cnt_id]:
+                    all_data[cnt_id]['name'] = weight_info['peopleName']
+                    all_data[cnt_id]['house'] = weight_info['house']
+                    all_data[cnt_id]['yeargroup'] = weight_info['yeargroup']
+                    all_data[cnt_id]['formclass'] = weight_info['formclass']
+
+        currentDate += timedelta(days=1)  # Move to the next day
+
+    print(f"1: Found {found1} IDs and {statCount} IDs were not found in the conversion table.")
+    print(f"2: Found {found2} IDs and {weightCount} IDs were not found in the conversion table.")
+
+    # Save the dictionary to a JSON file
+    with open('combined_data/merged_data.json', 'w') as f:
+        json.dump(all_data, f, default=set_default)
 
 def categorize_data():
     categories = {
@@ -356,11 +453,12 @@ def cumulative_plot_waste(ax):
 
 def cumulative_spec_plot_weights(ax, ospec):
     spec_wastage = {}
-
+    noncount = 0
     for member, member_data in all_data.items():
         member_spec = member_data.get(ospec)
         if not member_spec: # Skip members without the specified attribute
-            print(f"Member {member} does not have a {ospec}.")
+            #print(f"Member {member} does not have a {ospec}.")
+            noncount += 1
             continue
         if member_spec not in spec_wastage:
             spec_wastage[member_spec] = {}
@@ -375,6 +473,7 @@ def cumulative_spec_plot_weights(ax, ospec):
                     spec_wastage[member_spec][day] = 0
                 spec_wastage[member_spec][day] += total_weight 
 
+    print(f"Skipped {noncount} members without a {ospec}.")            
     cumulative_spec_wastage = {}
 
     for spec, daily_wastage in spec_wastage.items():
@@ -441,11 +540,9 @@ def convert_cnt_id(cnt_id): # short ID to long ID
     return api_id
 
 def convert_api_id(api_id): # long ID to short ID, REVERSE
+    api_id = float(api_id)
     cnt_id = reverse_conversion_dict.get(api_id, None)
-    '''if not cnt_id:
-        print(f"API ID {api_id} not found in the conversion table.")
-    else:
-        print(f"Converted from {api_id} to {cnt_id}")'''
+
     return cnt_id
 
 def rank_counters(average_wastage, total_wastage, counter_days):
@@ -465,10 +562,10 @@ def rank_counters(average_wastage, total_wastage, counter_days):
     for counter, days in counter_days_ranked:
         print(f"{counter}: {days} buys")
 
-if __name__ == "__main__":
+def main():
     #current_date = getDate()
-    #report("2024-05-13", "2024-06-19") # Start date, end date
-    load_data()
+    report("2024-05-13", "2024-06-19") # Start date, end date
+    #load_data()
 
     categories, both_counter_weights = categorize_data()
     for category, count in categories.items():
@@ -506,3 +603,8 @@ if __name__ == "__main__":
     plt.savefig('plots/plot.png')
 
     plt.show()
+
+if __name__ == "__main__":
+    main()
+    #getWeightsbyDate(datetime.strptime("2024-05-13", '%Y-%m-%d'), datetime.strptime("2024-05-15", '%Y-%m-%d'))
+    #print(weight_data)
