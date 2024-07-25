@@ -21,7 +21,7 @@ conversion_dict = {}
 reverse_conversion_dict = {}
 daily_counter_wastage = {}
 counter_purchases = {}
-
+member_info = {}
 directory = 'data'
 prefix = '餐线消费数据-'
 
@@ -43,7 +43,7 @@ def load_data(file_path = 'combined_data/merged_data.json'):
         all_data = json.load(f)
 
 def getWeightsbyDate(startDate, endDate):
-    global weight_data
+    global weight_data, member_info
 
     api_url = "http://10.10.0.44/beijingdev/dev/getrecord"
     startDateForm = startDate.strftime('%Y-%m-%d')
@@ -77,6 +77,14 @@ def getWeightsbyDate(startDate, endDate):
                 'yeargroup': data.get('yeargroup'),
                 'formclass': data.get('formclass'),
                 'weights': []
+            }
+        cardInt = int(cardNum)
+        if cardInt not in member_info:
+            member_info[cardInt] = {
+                'peopleName': data.get('peopleName'),
+                'house': data.get('house'),
+                'yeargroup': data.get('yeargroup'),
+                'formclass': data.get('formclass')
             }
         weight_data[day][cardNum]['weights'].append(data['weight'])
 
@@ -136,6 +144,7 @@ def merge_data(startDate, endDate):
     all_data = {}
     found1, found2 = 0, 0
     statCount, weightCount = 0, 0
+    counter, goodcount = 0, 0
     # Convert startDate and endDate to datetime objects
     startDate = datetime.strptime(startDate, '%Y-%m-%d')
     endDate = datetime.strptime(endDate, '%Y-%m-%d')
@@ -158,7 +167,7 @@ def merge_data(startDate, endDate):
                 if not api_id:  # Skip the person if the ID cannot be converted
                     statCount += 1
                     continue
-                
+                api_id = int(api_id)
                 found1 += 1
 
                 if cnt_id not in all_data:
@@ -167,11 +176,23 @@ def merge_data(startDate, endDate):
                     all_data[cnt_id][day] = {'stations': [], 'weights': []}
 
                 all_data[cnt_id][day]['stations'].append(pos_name[i])
+                if 'name' not in all_data[cnt_id]:
+                    if api_id not in member_info:
+                        counter += 1
+                        continue
+                    goodcount += 1
+                    all_data[cnt_id]['name'] = member_info[api_id]['peopleName']
+                    all_data[cnt_id]['house'] = member_info[api_id]['house']
+                    all_data[cnt_id]['yeargroup'] = member_info[api_id]['yeargroup']
+                    all_data[cnt_id]['formclass'] = member_info[api_id]['formclass']
+
+                # add code to set the name house etc
 
         # Process weight_data for the current day
         if day in weight_data:
             for api_id, weight_info in weight_data[day].items():
                 cnt_id = convert_api_id(api_id)
+                api_id = int(api_id)
                 if not cnt_id:  # Skip the person if the ID cannot be converted
                     weightCount += 1
                     continue
@@ -184,13 +205,14 @@ def merge_data(startDate, endDate):
                 for weight in weight_info['weights']:
                     all_data[cnt_id][day]['weights'].append(weight)
                 if 'name' not in all_data[cnt_id]:
-                    all_data[cnt_id]['name'] = weight_info['peopleName']
-                    all_data[cnt_id]['house'] = weight_info['house']
-                    all_data[cnt_id]['yeargroup'] = weight_info['yeargroup']
-                    all_data[cnt_id]['formclass'] = weight_info['formclass']
+                    goodcount += 1
+                    all_data[cnt_id]['name'] = member_info[api_id]['peopleName']
+                    all_data[cnt_id]['house'] = member_info[api_id]['house']
+                    all_data[cnt_id]['yeargroup'] = member_info[api_id]['yeargroup']
+                    all_data[cnt_id]['formclass'] = member_info[api_id]['formclass']
 
         currentDate += timedelta(days=1)  # Move to the next day
-
+    print(f"{goodcount}/{goodcount + counter} members have info.")
     print(f"1: Found {found1} IDs and {statCount} IDs were not found in the conversion table.")
     print(f"2: Found {found2} IDs and {weightCount} IDs were not found in the conversion table.")
 
@@ -362,13 +384,24 @@ def cumulative_plot_waste(ax):
     ax.set_title('Cumulative Food Waste Over Time')  # Add a title
     ax.legend(prop=font)
 
-def cumulative_spec_plot_weights(ax, ospec):
+def cumulative_spec_plot_weights(ax, ospec, start_date=None, end_date=None, continuous=False):
+    # Define the color mapping for houses
+    house_colors = {'Owens': 'orange', 'Soong': 'red', 'Alleyn': 'purple', 'Johnson': 'blue', 'Wodehouse': 'green'}
+
+    if continuous:
+        # Convert start_date and end_date to datetime objects
+        start_date = datetime.strptime(start_date, '%Y-%m-%d')
+        end_date = datetime.strptime(end_date, '%Y-%m-%d')
+
+        # Create a list of all dates in the range
+        all_dates = [start_date + timedelta(days=i) for i in range((end_date - start_date).days + 1)]
+        all_dates = [date.strftime('%Y-%m-%d') for date in all_dates]  # Convert dates back to strings
+
     spec_wastage = {}
     noncount = 0
     for member, member_data in all_data.items():
         member_spec = member_data.get(ospec)
         if not member_spec: # Skip members without the specified attribute
-            #print(f"Member {member} does not have a {ospec}.")
             noncount += 1
             continue
         if member_spec not in spec_wastage:
@@ -388,7 +421,13 @@ def cumulative_spec_plot_weights(ax, ospec):
     cumulative_spec_wastage = {}
 
     for spec, daily_wastage in spec_wastage.items():
-        cumulative_spec_wastage[spec] = {}
+        cumulative_spec_wastage[spec] = {}  # Initialize the dictionary for the spec
+        if continuous:
+            # Fill in missing dates with a wastage of 0
+            for date in all_dates:
+                if date not in daily_wastage:
+                    daily_wastage[date] = 0
+
         # Sort the dates
         sorted_dates = sorted(daily_wastage.keys(), key=lambda date: datetime.strptime(date, '%Y-%m-%d'))
         # Initialize the cumulative total
@@ -404,7 +443,10 @@ def cumulative_spec_plot_weights(ax, ospec):
         sorted_dates = sorted(daily_wastage.keys(), key=lambda date: datetime.strptime(date, '%Y-%m-%d'))
         sorted_wastage = [daily_wastage[date] for date in sorted_dates]
         # Plot the data
-        ax.plot(sorted_dates, sorted_wastage, '-', label=spec)
+        if ospec == 'house' and spec in house_colors:  # If the spec is 'house' and the house name is in the color mapping
+            ax.plot(sorted_dates, sorted_wastage, '-', label=spec, color=house_colors[spec])  # Use the corresponding color
+        else:
+            ax.plot(sorted_dates, sorted_wastage, '-', label=spec)  # Use the default color
 
     plt.gcf().autofmt_xdate()  # Optional: for better formatting of date labels
     ax.set_title(f'Cumulative Wastage Over Time by {ospec}')  # Add a title
@@ -473,10 +515,10 @@ def rank_counters(average_wastage, total_wastage, counter_days):
     for counter, days in counter_days_ranked:
         print(f"{counter}: {days} buys")
 
-def main():
+def main(startDate, endDate, continuous, filename):
     #current_date = getDate()
-    report("2024-05-13", "2024-06-19") # Start date, end date
-    #load_data()
+    #report(startDate, endDate) # Start date, end date
+    load_data()
 
     categories, both_counter_weights = categorize_data()
     for category, count in categories.items():
@@ -503,19 +545,29 @@ def main():
     
     #cumulative_spec_plot_weights(ax1, 'formclass') # Plots cumulative wastage by formclass
     cumulative_plot_waste(ax1) # Plots cumulative wastage
-    cumulative_spec_plot_weights(ax2, 'yeargroup')
-    cumulative_spec_plot_weights(ax3, 'house') # Plots cumulative wastage by house
+
+    #cumulative_spec_plot_weights(ax2, 'yeargroup')
+    cumulative_spec_plot_weights(ax2, 'yeargroup', startDate, endDate, continuous)
+
+    #cumulative_spec_plot_weights(ax3, 'house') # Plots cumulative wastage by house
+    cumulative_spec_plot_weights(ax3, 'house', startDate, endDate, continuous)
+
     #plot_counter_averages(ax3) # Plots counter averages
 
     # Ensure the 'plots' folder exists
     os.makedirs('plots', exist_ok=True)
-    
-    # Save the figure to a file in the 'plots' folder
-    plt.savefig('plots/plot.png')
 
-    plt.show()
+    now = datetime.now()
+    timestamp = now.strftime('%Y%m%d_%H%M%S')
+
+    filepath = f'plots/plot_{filename}.png'
+    plt.savefig(filepath)
+
+    #plt.show()
 
 if __name__ == "__main__":
-    main()
+    
+
+    main("2024-05-13", "2024-06-19", False, "discrete")
     #getWeightsbyDate(datetime.strptime("2024-05-13", '%Y-%m-%d'), datetime.strptime("2024-05-15", '%Y-%m-%d'))
     #print(weight_data)
