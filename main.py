@@ -515,10 +515,10 @@ def rank_counters(average_wastage, total_wastage, counter_days):
     for counter, days in counter_days_ranked:
         print(f"{counter}: {days} buys")
 
-def main(startDate, endDate, continuous, filename):
+def main(startDate, endDate):
     #current_date = getDate()
-    #report(startDate, endDate) # Start date, end date
-    load_data()
+    report(startDate, endDate) # Start date, end date
+    #load_data()
 
     categories, both_counter_weights = categorize_data()
     for category, count in categories.items():
@@ -536,17 +536,17 @@ def main(startDate, endDate, continuous, filename):
     rank_counters(average_wastage, total_wastage, counter_tally)
 
     calculate_daily_average_wastage() 
-
+    plot(startDate, endDate, True, "continous")
+    plot(startDate, endDate, False, "discrete")
+def plot(startDate, endDate, continuous, filename):
     # Create a 1x3 grid of subplots. The returned object is a Figure instance (f) and an array of Axes objects (ax1, ax2, ax3)
     f, (ax1, ax2, ax3) = plt.subplots(1, 3, figsize=(18, 6))
 
     # Pass the appropriate Axes object to each plotting function
     #cumulative_plot_buys(ax1) # Plots cumulative purchases
     
-    #cumulative_spec_plot_weights(ax1, 'formclass') # Plots cumulative wastage by formclass
     cumulative_plot_waste(ax1) # Plots cumulative wastage
 
-    #cumulative_spec_plot_weights(ax2, 'yeargroup')
     cumulative_spec_plot_weights(ax2, 'yeargroup', startDate, endDate, continuous)
 
     #cumulative_spec_plot_weights(ax3, 'house') # Plots cumulative wastage by house
@@ -568,6 +568,6 @@ def main(startDate, endDate, continuous, filename):
 if __name__ == "__main__":
     
 
-    main("2024-05-13", "2024-06-19", False, "discrete")
+    main("2024-05-13", "2024-06-19")
     #getWeightsbyDate(datetime.strptime("2024-05-13", '%Y-%m-%d'), datetime.strptime("2024-05-15", '%Y-%m-%d'))
     #print(weight_data)
