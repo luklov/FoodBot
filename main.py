@@ -517,8 +517,8 @@ def rank_counters(average_wastage, total_wastage, counter_days):
 
 def main(startDate, endDate):
     #current_date = getDate()
-    report(startDate, endDate) # Start date, end date
-    #load_data()
+    #report(startDate, endDate) # Start date, end date
+    load_data()
 
     categories, both_counter_weights = categorize_data()
     for category, count in categories.items():
@@ -536,23 +536,31 @@ def main(startDate, endDate):
     rank_counters(average_wastage, total_wastage, counter_tally)
 
     calculate_daily_average_wastage() 
-    plot(startDate, endDate, True, "continous")
-    plot(startDate, endDate, False, "discrete")
-def plot(startDate, endDate, continuous, filename):
+
+    # STUDENT SIDE
+    plots = ['counters', 'yeargroup', 'house']
+    plot(startDate, endDate, plots, True, "stu_continous")
+    plot(startDate, endDate, plots, False, "stu_discrete")
+
+    # SODEXO SIDE
+    plots = ['counters', 'buys', 'counter_avg']
+    plot(startDate, endDate, plots, True, "sod_continous")
+    plot(startDate, endDate, plots, False, "sod_discrete")
+
+def plot(startDate, endDate, plots, continuous, filename):
     # Create a 1x3 grid of subplots. The returned object is a Figure instance (f) and an array of Axes objects (ax1, ax2, ax3)
     f, (ax1, ax2, ax3) = plt.subplots(1, 3, figsize=(18, 6))
-
-    # Pass the appropriate Axes object to each plotting function
-    #cumulative_plot_buys(ax1) # Plots cumulative purchases
+    axes = [ax1, ax2, ax3]
     
-    cumulative_plot_waste(ax1) # Plots cumulative wastage
-
-    cumulative_spec_plot_weights(ax2, 'yeargroup', startDate, endDate, continuous)
-
-    #cumulative_spec_plot_weights(ax3, 'house') # Plots cumulative wastage by house
-    cumulative_spec_plot_weights(ax3, 'house', startDate, endDate, continuous)
-
-    #plot_counter_averages(ax3) # Plots counter averages
+    for i, ax in enumerate(axes):
+        if plots[i] == 'counters':
+            cumulative_plot_waste(ax)
+        elif plots[i] == 'buys':
+            cumulative_plot_buys(ax)
+        elif plots[i] == 'counter_avg':
+            plot_counter_averages(ax)
+        else:
+            cumulative_spec_plot_weights(ax, plots[i], startDate, endDate, continuous)
 
     # Ensure the 'plots' folder exists
     os.makedirs('plots', exist_ok=True)
