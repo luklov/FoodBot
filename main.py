@@ -12,22 +12,15 @@ from matplotlib.font_manager import FontProperties
 
 font = FontProperties(fname="/System/Library/Fonts/PingFang.ttc")
 
-all_data = {}
-weight_data = {}
-station_data = {}
-weight_data = {}
-
 conversion_dict = {}
 reverse_conversion_dict = {}
-daily_counter_wastage = {}
-counter_purchases = {}
-member_info = {}
+
+
 directory = 'data'
 prefix = '餐线消费数据-'
 
 
 def make_conversion_dicts():
-    global conversion_dict, reverse_conversion_dict
     # Merge the Excel data and API data based on user ID (peopleCard)
     conversion_table = pd.read_excel('conversion.xls')
     conversion_dict = dict(zip(conversion_table['会员编号'], conversion_table['卡号']))
@@ -38,12 +31,13 @@ def getDate():
     return datetime.now().strftime('%Y-%m-%d')
 
 def load_data(file_path = 'combined_data/merged_data.json'):
-    global all_data
     with open(file_path, 'r') as f:
         all_data = json.load(f)
+    return all_data
 
-def getWeightsbyDate(startDate, endDate):
-    global weight_data, member_info
+def getWeightsbyDate(startDate, endDate): # PASS IN WEIGHT DATA + MEMBER INFO
+    weight_data = {}
+    member_info = {}
 
     api_url = "http://10.10.0.44/beijingdev/dev/getrecord"
     startDateForm = startDate.strftime('%Y-%m-%d')
@@ -88,10 +82,9 @@ def getWeightsbyDate(startDate, endDate):
             }
         weight_data[day][cardNum]['weights'].append(data['weight'])
 
-    return weight_data
+    return weight_data, member_info
 
-def getStation(filename):
-    global station_data
+def getStation(station_data, filename):
 
     file_path = os.path.join(directory, f'{prefix}{filename}.xlsx')
     excel_file = pd.read_excel(file_path, sheet_name=None)  # Read the Excel file
@@ -109,23 +102,21 @@ def getStation(filename):
     return station_data
 
 def getAllStations():
-    global station_data
     station_data = {}
 
     for filename in os.listdir(directory):
         if filename.startswith(prefix) and filename.endswith(".xlsx"):
-            getStation(filename.replace('.xlsx', '').replace('餐线消费数据-', ''))
+            station_data = getStation(station_data, filename.replace('.xlsx', '').replace('餐线消费数据-', ''))
+    return station_data
 
 def report(startDateStr, endDateStr):
     startDate = datetime.strptime(startDateStr, '%Y-%m-%d')
     endDate = datetime.strptime(endDateStr, '%Y-%m-%d')
 
-    getAllStations()
-    #getWeights(startDate, endDate) # puts weights in dict
-    #getStation(startDateStr)
-    getWeightsbyDate(startDate, endDate) # puts weights in dict
+    station_data = getAllStations() # puts station data in dict
+    weight_data, member_info = getWeightsbyDate(startDate, endDate) # puts weights in dict
 
-    if not station_data:
+    if not station_data: 
         print("No station data found for the given date range.")
         return
     if not weight_data:
@@ -134,13 +125,12 @@ def report(startDateStr, endDateStr):
 
     #print(f"Station Data: {station_data}")
     #print(f"Weight Data: {weight_data}")
-    make_conversion_dicts()
-    merge_data(startDateStr, endDateStr)
+    conversion_dict, reverse_conversion_dict = make_conversion_dicts()
+    all_data = merge_data(station_data, weight_data, member_info, conversion_dict, reverse_conversion_dict, startDateStr, endDateStr)
 
-    return
+    return all_data
 
-def merge_data(startDate, endDate):
-    global all_data
+def merge_data(station_data, weight_data, member_info, conversion_dict, reverse_conversion_dict, startDate, endDate):
     all_data = {}
     found1, found2 = 0, 0
     statCount, weightCount = 0, 0
@@ -163,7 +153,7 @@ def merge_data(startDate, endDate):
             for i, cnt_id in enumerate(member_id):
                 if cnt_id == 'No Match':  # Skip if ID in June data not convertable
                     continue
-                api_id = convert_cnt_id(cnt_id)  # short to long ID
+                api_id = convert_cnt_id(conversion_dict, cnt_id)  # short to long ID
                 if not api_id:  # Skip the person if the ID cannot be converted
                     statCount += 1
                     continue
@@ -191,7 +181,7 @@ def merge_data(startDate, endDate):
         # Process weight_data for the current day
         if day in weight_data:
             for api_id, weight_info in weight_data[day].items():
-                cnt_id = convert_api_id(api_id)
+                cnt_id = convert_api_id(reverse_conversion_dict, api_id)
                 api_id = int(api_id)
                 if not cnt_id:  # Skip the person if the ID cannot be converted
                     weightCount += 1
@@ -220,7 +210,9 @@ def merge_data(startDate, endDate):
     with open('combined_data/merged_data.json', 'w') as f:
         json.dump(all_data, f, default=set_default)
 
-def categorize_data():
+    return all_data
+
+def categorize_data(all_data):
     categories = {
         'weights_no_counters': 0,
         'counters_no_weights': 0,
@@ -260,8 +252,7 @@ def categorize_data():
 
     return categories, both_counter_weights
 
-def calculate_totals():
-    global counter_purchases
+def calculate_totals(all_data):
     counter_wastage = {}
     counter_tally = {}
     counter_purchases = {}
@@ -290,10 +281,9 @@ def calculate_totals():
 
     average_wastage = {counter: total_wastage / counter_tally[counter] for counter, total_wastage in counter_wastage.items()}
 
-    return average_wastage, counter_wastage, counter_tally
+    return average_wastage, counter_wastage, counter_tally, counter_purchases
 
-def calculate_daily_average_wastage():
-    global daily_counter_wastage
+def calculate_daily_average_wastage(all_data):
     daily_counter_wastage = {}
 
     counter_totals = {}
@@ -325,20 +315,32 @@ def calculate_daily_average_wastage():
             if counter not in daily_counter_wastage:
                 daily_counter_wastage[counter] = {}
             daily_counter_wastage[counter][day] = total / counter_counts[counter][day]
+    return daily_counter_wastage
 
-def plot_counter_averages(ax):
-    for counter, daily_wastage in daily_counter_wastage.items():
+def plot_counter_averages(daily_counter_wastage, ax):
+    colors = ['b', 'g', 'r', 'c', 'm', 'y', 'k', 'orange', 'purple', 'brown', 'pink', 'gray', 'olive', 'cyan']  # Extended list of colors for the plot lines
+    for i, (counter, daily_wastage) in enumerate(daily_counter_wastage.items()):
         # Sort the dates
         sorted_dates = sorted(daily_wastage.keys(), key=lambda date: datetime.strptime(date, '%Y-%m-%d'))
         sorted_wastages = [daily_wastage[date] for date in sorted_dates]
-        ax.plot(sorted_dates, sorted_wastages, '-', label=counter)
+        color = colors[i % len(colors)]  # Choose a color from the list
+        ax.plot(sorted_dates, sorted_wastages, '-', label=counter, color=color)
+
+        # Calculate the net average wastage
+        total_wastage = sum(sorted_wastages)
+        num_days = len(sorted_wastages)
+        average_wastage = total_wastage / num_days if num_days else 0
+
+        # Plot the average wastage as a horizontal line
+        ax.axhline(average_wastage, color=color, linestyle='--', alpha=1)
 
     plt.gcf().autofmt_xdate()
     ax.set_title('Counter Averages Over Time')  # Add a title
+    ax.set_xlabel('Date')  # Add x-axis label
+    ax.set_ylabel('Average Wastage (grams)')  # Add y-axis label
     ax.legend(prop = font)
 
-def cumulative_plot_waste(ax):
-    global daily_counter_wastage
+def cumulative_plot_waste(all_data, ax):
     daily_counter_wastage = {}
 
     for member, member_data in all_data.items():
@@ -382,9 +384,13 @@ def cumulative_plot_waste(ax):
     
     plt.gcf().autofmt_xdate()  # Optional: for better formatting of date labels
     ax.set_title('Cumulative Food Waste Over Time')  # Add a title
+    ax.set_xlabel('Date')  # Add x-axis label
+    ax.set_ylabel('Total Wastage (grams)')  # Add y-axis label
     ax.legend(prop=font)
 
-def cumulative_spec_plot_weights(ax, ospec, start_date=None, end_date=None, continuous=False):
+    return daily_counter_wastage
+
+def cumulative_spec_plot_weights(all_data, ax, ospec, start_date=None, end_date=None, continuous=False):
     # Define the color mapping for houses
     house_colors = {'Owens': 'orange', 'Soong': 'red', 'Alleyn': 'purple', 'Johnson': 'blue', 'Wodehouse': 'green'}
 
@@ -450,9 +456,11 @@ def cumulative_spec_plot_weights(ax, ospec, start_date=None, end_date=None, cont
 
     plt.gcf().autofmt_xdate()  # Optional: for better formatting of date labels
     ax.set_title(f'Cumulative Wastage Over Time by {ospec}')  # Add a title
+    ax.set_xlabel('Date')  # Add x-axis label
+    ax.set_ylabel('Total Wastage (grams)')  # Add y-axis label
     ax.legend(prop=font)
 
-def cumulative_plot_buys(ax):
+def cumulative_plot_buys(counter_purchases, ax):
     cumulative_counter_purchases = {}
 
     for counter, daily_purchases in counter_purchases.items():
@@ -476,6 +484,8 @@ def cumulative_plot_buys(ax):
     
     plt.gcf().autofmt_xdate()  # Optional: for better formatting of date labels
     ax.set_title('Cumulative Purchases Over Time')  # Add a title
+    ax.set_xlabel('Date')  # Add x-axis label
+    ax.set_ylabel('Total Buys')  # Add y-axis label
     ax.legend(prop=font)
 
 def set_default(obj):
@@ -483,7 +493,7 @@ def set_default(obj):
         return list(obj)
     raise TypeError
     
-def convert_cnt_id(cnt_id): # short ID to long ID
+def convert_cnt_id(conversion_dict, cnt_id): # short ID to long ID
     #print(conversion_dict)
     api_id = conversion_dict.get(cnt_id, None)
     '''if not api_id:
@@ -492,13 +502,13 @@ def convert_cnt_id(cnt_id): # short ID to long ID
         print(f"Converted from {cnt_id} to {api_id}")'''
     return api_id
 
-def convert_api_id(api_id): # long ID to short ID, REVERSE
+def convert_api_id(reverse_conversion_dict, api_id): # long ID to short ID, REVERSE
     api_id = float(api_id)
     cnt_id = reverse_conversion_dict.get(api_id, None)
 
     return cnt_id
 
-def rank_counters(average_wastage, total_wastage, counter_days):
+def rank_counters(average_wastage, total_wastage, counter_days): # Prints ranks of counters
     average_wastage_ranked = sorted(average_wastage.items(), key=lambda item: item[1], reverse=True)
     total_wastage_ranked = sorted(total_wastage.items(), key=lambda item: item[1], reverse=True)
     counter_days_ranked = sorted(counter_days.items(), key=lambda item: item[1], reverse=True)
@@ -517,10 +527,11 @@ def rank_counters(average_wastage, total_wastage, counter_days):
 
 def main(startDate, endDate):
     #current_date = getDate()
-    #report(startDate, endDate) # Start date, end date
-    load_data()
 
-    categories, both_counter_weights = categorize_data()
+    #all_data = report(startDate, endDate) # Start date, end date
+    all_data = load_data() # Load data from JSON file
+
+    categories, both_counter_weights = categorize_data(all_data)
     for category, count in categories.items():
         print(f"{category}: {count} days")
 
@@ -531,36 +542,41 @@ def main(startDate, endDate):
 
     print("\n")
 
-    average_wastage, total_wastage, counter_tally = calculate_totals()
+    
+    average_wastage, total_wastage, counter_tally, counter_purchases = calculate_totals(all_data)
+    daily_average_wastage = calculate_daily_average_wastage(all_data) 
+    
+    metadata = [all_data, average_wastage, total_wastage, counter_tally, counter_purchases, daily_average_wastage] # Store all metadata in a list
 
     rank_counters(average_wastage, total_wastage, counter_tally)
+    
 
-    calculate_daily_average_wastage() 
+    run = 1
 
     # STUDENT SIDE
     plots = ['counters', 'yeargroup', 'house']
-    plot(startDate, endDate, plots, True, "stu_continous")
-    plot(startDate, endDate, plots, False, "stu_discrete")
+    plot(startDate, endDate, plots, metadata, True, f"stu_continous{run}")
+    plot(startDate, endDate, plots, metadata, False, f"stu_discrete{run}")
 
     # SODEXO SIDE
     plots = ['counters', 'buys', 'counter_avg']
-    plot(startDate, endDate, plots, True, "sod_continous")
-    plot(startDate, endDate, plots, False, "sod_discrete")
+    plot(startDate, endDate, plots, metadata, True, f"sod_continous{run}")
+    plot(startDate, endDate, plots, metadata, False, f"sod_discrete{run}")
 
-def plot(startDate, endDate, plots, continuous, filename):
+def plot(startDate, endDate, plots, metadata, continuous, filename): # plots and metadata are lists
     # Create a 1x3 grid of subplots. The returned object is a Figure instance (f) and an array of Axes objects (ax1, ax2, ax3)
     f, (ax1, ax2, ax3) = plt.subplots(1, 3, figsize=(18, 6))
     axes = [ax1, ax2, ax3]
     
     for i, ax in enumerate(axes):
         if plots[i] == 'counters':
-            cumulative_plot_waste(ax)
+            cumulative_plot_waste(metadata[0], ax) # all_data
         elif plots[i] == 'buys':
-            cumulative_plot_buys(ax)
+            cumulative_plot_buys(metadata[4], ax) # counter_purchases
         elif plots[i] == 'counter_avg':
-            plot_counter_averages(ax)
+            plot_counter_averages(metadata[5], ax) # daily_average_wastage
         else:
-            cumulative_spec_plot_weights(ax, plots[i], startDate, endDate, continuous)
+            cumulative_spec_plot_weights(metadata[0], ax, plots[i], startDate, endDate, continuous) # all_data
 
     # Ensure the 'plots' folder exists
     os.makedirs('plots', exist_ok=True)
