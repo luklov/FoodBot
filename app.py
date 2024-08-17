@@ -3,6 +3,12 @@ import tkinter as tk
 from tkinter import messagebox
 from tkcalendar import DateEntry
 
+from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg
+from matplotlib.figure import Figure
+import matplotlib.image as mpimg
+
+from main import load_data, report, analyze_data, plot
+
 current_date = datetime.date.today().isoformat()
 
 fwat_label_font = ("Helvetica", 36, "italic")
@@ -13,6 +19,7 @@ small_button_font = ("Helvetica", 24)
 button_font = ("Helvetica", 36)
 
 dropdown_font = ("Helvetica", 24)
+calendar_font = ("Helvetica", 24)
 
 def setup_window(title, title_col=0):
     root = tk.Tk()
@@ -35,7 +42,8 @@ def setup_window(title, title_col=0):
 
 def launch():
     print("Launching app...")
-    signin()
+    #signin()
+    mode_choice() # Skip the login screen during dev
     print("App launched!")
 
 def authenticate(entry_username, entry_password, root):
@@ -113,17 +121,79 @@ def realtime_menu():
 
 def select_date(root, date_var):
     def update_date():
-        date_var.set(cal.get_date().isoformat())  # Update the date variable with the selected date
-        top.destroy()
+        selected_date = cal.get_date()
+        if selected_date <= datetime.date.today():
+            date_var.set(selected_date.isoformat())  # Update the date variable with the selected date
+            top.destroy()
+        else:
+            messagebox.showerror("Error", "The date cannot be in the future.")
 
+    
     top = tk.Toplevel(root)
-    cal = DateEntry(top, width=12, background='darkblue', foreground='white', borderwidth=2)
+    top.title("Select Date")
+    cal = DateEntry(top, width=12, background='light grey', foreground='purple', borderwidth=2, font=calendar_font)
     cal.pack(padx=10, pady=10)
 
     button_ok = tk.Button(top, text="OK", command=update_date)
     button_ok.pack(pady=10)
 
+def regenerate_data():
+    start_date = "2024-05-13"
+    end_date = current_date
+    all_data = report(start_date, end_date)
+    if all_data:
+        messagebox.showinfo("Success", "Data regenerated successfully.")
+    else:
+        messagebox.showerror("Error", "Failed to regenerate data.")
+    return all_data
+
+def add_plot(startDate, endDate, preset, all_data):
+    startDate = datetime.datetime.strptime(startDate.get(), "%Y-%m-%d").date() # Convert the strings to a date object
+    endDate = datetime.datetime.strptime(endDate.get(), "%Y-%m-%d").date()
+
+    if startDate > endDate:
+        messagebox.showerror("Error", "Start date cannot be greater than end date.")
+        return
+
+    metadata = analyze_data(all_data, startDate, endDate) # only analyze selected days data
+
+    if preset == "Student":
+        plots = ['counters', 'yeargroup', 'house']
+    elif preset == "Sodexo":
+        plots = ['counters', 'buys', 'counter_avg']
+    elif preset == "Custom":
+        plots = ['counters', 'buys', 'counter_avg', 'yeargroup', 'house']
+    plot(startDate, endDate, plots, metadata, False, "app_output", False)
+    '''
+    # Create a new Tkinter window
+    window = tk.Tk()
+
+    # Create a new figure and a new axes
+    fig = Figure(figsize=(5, 5))
+    ax = fig.add_subplot(111)
+
+    # Load the image file
+    img = mpimg.imread('plots/plot_app_output.png')
+
+    # Display the image in the axes
+    ax.imshow(img)
+
+    # Create a canvas and add it to the window
+    canvas = FigureCanvasTkAgg(fig, master=window)
+    canvas.draw()
+    canvas.get_tk_widget().pack()
+
+    # Start the Tkinter event loop
+    window.mainloop()
+    '''
+
 def recap_menu():
+    all_data = load_data()
+
+    def call_regenerate_data():
+        global all_data
+        all_data = regenerate_data()
+
     print("Recap menu selected.")
     root = setup_window("Recap Menu", 1)
 
@@ -135,7 +205,7 @@ def recap_menu():
     button_back.grid(row=0, column=0, sticky='ew')
     
     # Add presets dropdown menu
-    presets = ["Preset 1", "Preset 2", "Preset 3"]
+    presets = ["Student", "Sodexo", "Custom"]
     preset_var = tk.StringVar(root)
     preset_var.set(presets[0])  # default value
     dropdown_presets = tk.OptionMenu(root, preset_var, *presets)
@@ -145,35 +215,31 @@ def recap_menu():
     # Add "Save Preset" button
     button_save_preset = tk.Button(root, text="Save Preset", font=button_font)
     button_save_preset.grid(row=2, column=1, sticky='ew')
-
-    # Add categories dropdown menu
-    categories = ["Category 1", "Category 2", "Category 3"]
-    category_var = tk.StringVar(root)
-    category_var.set(categories[0])  # default value
-    dropdown_categories = tk.OptionMenu(root, category_var, *categories)
-    dropdown_categories.grid(row=3, column=0, sticky='ew')
-    dropdown_categories.configure(font=dropdown_font)  # Change the font and size
-
+    '''
+        # Add categories dropdown menu
+        categories = ["Category 1", "Category 2", "Category 3"]
+        category_var = tk.StringVar(root)
+        category_var.set(categories[0])  # default value
+        dropdown_categories = tk.OptionMenu(root, category_var, *categories)
+        dropdown_categories.grid(row=3, column=0, sticky='ew')
+        dropdown_categories.configure(font=dropdown_font)  # Change the font and size
+    '''
     # Add date buttons
     button_start_date = tk.Button(root, textvariable=startDate, command=lambda: select_date(root, startDate), font=button_font)
-    button_start_date.grid(row=3, column=1, sticky='ew')
+    button_start_date.grid(row=4, column=0, sticky='ew')
 
-    button_end_date = tk.Button(root, textvariable=endDate, command=lambda: select_date(root, endDate), font=button_font)
-    button_end_date.grid(row=3, column=2, sticky='ew')
+    button_end_date = tk.Button(root, textvariable=endDate, command=lambda: select_date(root, endDate), font=button_font) # End date select
+    button_end_date.grid(row=4, column=1, sticky='ew')
 
-    # Change checkbox to button
-    button_regenerate = tk.Button(root, text="Regenerate Data", font=button_font)
-    button_regenerate.grid(row=4, column=0, sticky='ew')
+    button_regenerate = tk.Button(root, text="Regenerate Data", command=call_regenerate_data, font=button_font) # Regenerate merged data file
+    button_regenerate.grid(row=3, column=0, sticky='ew')
 
     # Add plot and mail buttons
-    button_add_plot = tk.Button(root, text="Add Plot", font=button_font)
+    button_add_plot = tk.Button(root, text="Preview", command=lambda: add_plot(startDate, endDate, preset_var.get(), all_data), font=button_font) # Add plot
     button_add_plot.grid(row=5, column=0, sticky='ew')
 
-    button_remove_plot = tk.Button(root, text="Remove Plot", font=button_font)
-    button_remove_plot.grid(row=5, column=1, sticky='ew')
-
-    button_send_mail = tk.Button(root, text="Send Mail", font=button_font)
-    button_send_mail.grid(row=5, column=2, sticky='ew')
+    button_send_mail = tk.Button(root, text="Send Mail", font=button_font) # Send mail
+    button_send_mail.grid(row=5, column=1, sticky='ew')
 
     # Configure the grid to expand properly when the window is resized
     for i in range(3):
