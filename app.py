@@ -31,7 +31,7 @@ def setup_window(title, title_col=0):
     root.geometry(f"{width}x{height}+0+0")  # Standardize the window size + position
     
     # Create a label with the app name "FWAT" in italic
-    label_app_name = tk.Label(root, text="FWAT - Food Waste Analysis Tool", font=fwat_label_font)
+    label_app_name = tk.Label(root, text="FWAT - Food Waste Analysis Tool", font=fwat_label_font, fg='purple')
     label_app_name.grid(row=0, column=title_col, sticky='nsew', columnspan=2)  # Use grid instead of pack and span across 2 columns
 
     # Create a line to separate the first row from the rest of the window
@@ -92,7 +92,7 @@ def mode_choice():
     button_mode1 = tk.Button(root, text="Real Time", command=lambda: [root.destroy(), realtime_menu()], font=button_font)
     button_mode1.grid(row=2, column=0, sticky='ew')
     button_mode2 = tk.Button(root, text="Recap", command=lambda: [root.destroy(), recap_menu()], font=button_font)
-    button_mode2.grid(row=3, column=0, sticky='ew')
+    button_mode2.grid(row=2, column=1, sticky='ew')
 
     # Create a signout button
     button_signout = tk.Button(root, text="Sign Out", width=10, command=lambda: [root.destroy(), signin()], font=small_button_font)
@@ -147,7 +147,7 @@ def regenerate_data():
         messagebox.showerror("Error", "Failed to regenerate data.")
     return all_data
 
-def add_plot(startDate, endDate, preset, all_data):
+def add_plot(startDate, endDate, preset, continous, all_data):
     startDate = datetime.datetime.strptime(startDate.get(), "%Y-%m-%d").date() # Convert the strings to a date object
     endDate = datetime.datetime.strptime(endDate.get(), "%Y-%m-%d").date()
 
@@ -163,7 +163,7 @@ def add_plot(startDate, endDate, preset, all_data):
         plots = ['counters', 'buys', 'counter_avg']
     elif preset == "Custom":
         plots = ['counters', 'buys', 'counter_avg', 'yeargroup', 'house']
-    plot(startDate, endDate, plots, metadata, False, "app_output", False)
+    plot(startDate, endDate, plots, metadata, continous, "app_output", False)
     '''
     # Create a new Tkinter window
     window = tk.Tk()
@@ -215,6 +215,25 @@ def recap_menu():
     # Add "Save Preset" button
     button_save_preset = tk.Button(root, text="Save Preset", font=button_font)
     button_save_preset.grid(row=2, column=1, sticky='ew')
+
+    # Create a variable to hold the state of the switch
+    continuous_var = tk.BooleanVar()
+    continuous_var.set(False)  # Default value
+
+    def update_color():
+        # Update the color of the text based on the state of the switch
+        switch_continuous.config(fg='green' if continuous_var.get() else 'red')
+
+    # Create a checkbutton that acts as a switch
+    switch_continuous = tk.Checkbutton(root, text="Continuous", variable=continuous_var, command=update_color, font=button_font)
+    switch_continuous.grid(row=3, column=1, sticky='ew')
+
+    # Update the color of the text initially
+    update_color()
+    
+    # Add "Save Preset" button
+    button_save_preset = tk.Button(root, text="Save Preset", font=button_font)
+    button_save_preset.grid(row=2, column=1, sticky='ew')
     '''
         # Add categories dropdown menu
         categories = ["Category 1", "Category 2", "Category 3"]
@@ -235,7 +254,7 @@ def recap_menu():
     button_regenerate.grid(row=3, column=0, sticky='ew')
 
     # Add plot and mail buttons
-    button_add_plot = tk.Button(root, text="Preview", command=lambda: add_plot(startDate, endDate, preset_var.get(), all_data), font=button_font) # Add plot
+    button_add_plot = tk.Button(root, text="Preview", command=lambda: add_plot(startDate, endDate, preset_var.get(), continuous_var.get(), all_data), font=button_font) # Add plot
     button_add_plot.grid(row=5, column=0, sticky='ew')
 
     button_send_mail = tk.Button(root, text="Send Mail", font=button_font) # Send mail
