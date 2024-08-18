@@ -7,6 +7,7 @@ import datetime
 import tkinter as tk
 from tkinter import messagebox
 from tkcalendar import DateEntry
+from tkinter import simpledialog
 
 from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg
 from matplotlib.figure import Figure
@@ -25,6 +26,8 @@ button_font = ("Helvetica", 36)
 
 dropdown_font = ("Helvetica", 24)
 calendar_font = ("Helvetica", 24)
+
+choices = ['counters', 'buys', 'counter_avg', 'yeargroup', 'house', 'formclass'] # List of available plot categories
 
 def setup_window(title, title_col=0):
     root = tk.Tk()
@@ -107,8 +110,8 @@ def send_mail(sender_email, sender_password, recipient_email):
 
 def launch():
     print("Launching app...")
-    #signin()
-    mode_choice() # Skip the login screen during dev
+    signin()
+    #mode_choice() # Skip the login screen during dev
     print("App launched!")
 
 def authenticate(entry_username, entry_password, root):
@@ -216,6 +219,8 @@ def add_plot(startDate, endDate, preset, continous, all_data, customs = None):
     startDate = datetime.datetime.strptime(startDate.get(), "%Y-%m-%d").date() # Convert the strings to a date object
     endDate = datetime.datetime.strptime(endDate.get(), "%Y-%m-%d").date()
 
+    year_groups = None
+
     if startDate > endDate:
         messagebox.showerror("Error", "Start date cannot be greater than end date.")
         return
@@ -223,17 +228,25 @@ def add_plot(startDate, endDate, preset, continous, all_data, customs = None):
     metadata = analyze_data(all_data, startDate, endDate) # only analyze selected days data
 
     if preset == "Student":
-        plots = ['counters', 'yeargroup', 'house']
+        plots = ['sodexo', 'yeargroup', 'house']
     elif preset == "Sodexo":
         plots = ['counters', 'buys', 'counter_avg']
     elif preset == "All":
-        plots = ['counters', 'buys', 'counter_avg', 'yeargroup', 'house']
+        plots = choices
     elif preset == "Custom":
         if customs is None or len(customs) == 0:
             messagebox.showerror("Error", "No custom options selected.")
             return
         plots = customs
-    plot(startDate, endDate, plots, metadata, continous, "app_output", False)
+
+    if "formclass" in plots:
+        # Prompt the user to enter a list of year groups
+        year_groups_input = simpledialog.askstring("Input", "Enter year groups separated by commas:")
+
+        # Split the input string into a list of year groups
+        year_groups = [year_group.strip() for year_group in year_groups_input.split(',')]
+    
+    plot(startDate, endDate, plots, metadata, continous, "app_output", year_groups)
     '''
     # Create a new Tkinter window
     window = tk.Tk()
@@ -278,7 +291,6 @@ def recap_menu():
     custom_window = None #
 
     presets = ["Student", "Sodexo", "All", "Custom"]
-    choices = ['counters', 'buys', 'counter_avg', 'yeargroup', 'house']
     
     def get_selected_options(preset_var):
         nonlocal listbox  # Use the outer variable
@@ -302,7 +314,7 @@ def recap_menu():
                 listbox = None
 
     def open_custom_window(root):
-        nonlocal choices
+        global choices
         # Create a new window
         custom_window = tk.Toplevel(root)
         custom_window.title("Custom Preset")

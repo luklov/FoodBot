@@ -1,5 +1,6 @@
 import pandas as pd
 import requests
+import collections
 
 import matplotlib.pyplot as plt
 import matplotlib.dates as mdates
@@ -396,7 +397,7 @@ def cumulative_plot_waste(all_data, ax, startDate, endDate):
 
     return daily_counter_wastage
 
-def cumulative_spec_plot_weights(all_data, ax, ospec, start_date=None, end_date=None, continuous=False):
+def cumulative_spec_plot_weights(all_data, ax, ospec, start_date=None, end_date=None, continuous=False, year_groups=None):
     # Define the color mapping for houses
     house_colors = {'Owens': 'orange', 'Soong': 'red', 'Alleyn': 'purple', 'Johnson': 'blue', 'Wodehouse': 'green'}
 
@@ -412,6 +413,9 @@ def cumulative_spec_plot_weights(all_data, ax, ospec, start_date=None, end_date=
         if not member_spec: # Skip members without the specified attribute
             noncount += 1
             continue
+        if ospec == 'formclass' and member_data.get('yeargroup') not in year_groups: # Skip members not in the specified year groups
+            continue
+
         if member_spec not in spec_wastage:
             spec_wastage[member_spec] = {}
         for day, day_data in member_data.items():
@@ -570,12 +574,14 @@ def test(startDateStr, endDateStr):
     plot(startDate, endDate, plots, metadata, True, f"sod_continous{run}")
     plot(startDate, endDate, plots, metadata, False, f"sod_discrete{run}")
 
-def plot(startDate, endDate, plots, metadata, continuous, filename, show=True): # plots and metadata are lists
+def plot(startDate, endDate, plots, metadata, continuous, filename, year_groups = None): # plots and metadata are lists
     plt.close('all')  # Close all existing figures
 
     # Create a 1x3 grid of subplots. The returned object is a Figure instance (f) and an array of Axes objects (ax1, ax2, ax3)
     f, axes = plt.subplots(1, len(plots), figsize=(18, 6))
-    
+    if not isinstance(axes, collections.abc.Iterable):
+        axes = [axes]
+
     for i, ax in enumerate(axes):
         if plots[i] == 'counters':
             cumulative_plot_waste(metadata[0], ax, startDate, endDate) # all_data
@@ -583,6 +589,8 @@ def plot(startDate, endDate, plots, metadata, continuous, filename, show=True): 
             cumulative_plot_buys(metadata[4], ax) # counter_purchases, date limited
         elif plots[i] == 'counter_avg':
             plot_counter_averages(metadata[5], ax) # daily_average_wastage, date limited
+        elif plots[i] == 'formclass':
+            cumulative_spec_plot_weights(metadata[0], ax, plots[i], startDate, endDate, continuous, year_groups) # all_data
         else:
             cumulative_spec_plot_weights(metadata[0], ax, plots[i], startDate, endDate, continuous) # all_data
 
