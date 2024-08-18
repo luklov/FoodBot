@@ -1,3 +1,8 @@
+import smtplib
+from email.mime.multipart import MIMEMultipart
+from email.mime.base import MIMEBase
+from email import encoders
+
 import datetime
 import tkinter as tk
 from tkinter import messagebox
@@ -26,7 +31,7 @@ def setup_window(title, title_col=0):
     root.title(title)
 
     # Calculate the window size as 1/3 of the screen's dimensions
-    width = root.winfo_screenwidth() // 3
+    width = root.winfo_screenwidth() // 2
     height = root.winfo_screenheight() // 3
     root.geometry(f"{width}x{height}+0+0")  # Standardize the window size + position
     
@@ -39,6 +44,66 @@ def setup_window(title, title_col=0):
     separator.grid(row=1, column=0, sticky='ew', columnspan=1000)  # Span across 2 columns
 
     return root
+
+def ask_credentials():
+    # Create a new window
+    popup = tk.Toplevel()
+    popup.title("Email Plots")
+
+    # Add email label and entry
+    email_label = tk.Label(popup, text="Sender Email:", font=button_font, fg='purple')
+    email_label.pack()
+    email_entry = tk.Entry(popup)
+    email_entry.pack()
+
+    # Add password label and entry
+    password_label = tk.Label(popup, text="Password:", font=button_font, fg='purple')
+    password_label.pack()
+    password_entry = tk.Entry(popup, show="*")
+    password_entry.pack()
+
+    # Add email label and entry
+    send_to_label = tk.Label(popup, text="Recipient Email:", font=button_font, fg='purple')
+    send_to_label.pack()
+    send_to_entry = tk.Entry(popup)
+    send_to_entry.pack()
+
+    # Add submit button
+    submit_button = tk.Button(popup, text="Submit", command=lambda: send_mail(email_entry.get(), password_entry.get(), send_to_entry.get()))
+    submit_button.pack()
+
+def send_mail(sender_email, sender_password, recipient_email):
+    try:    
+        # Set up the SMTP server
+        server = smtplib.SMTP('smtp.office365.com', 587)
+        server.starttls()
+
+        # Log in to the server
+        server.login(sender_email, sender_password)
+
+        # Create a multipart message
+        msg = MIMEMultipart()
+
+        # Set the email parameters
+        msg['From'] = sender_email
+        msg['To'] = recipient_email
+        msg['Subject'] = "Plot"
+
+        # Attach the file
+        with open("plots/plot_app_output.png", "rb") as attachment:
+            part = MIMEBase('application', 'octet-stream')
+            part.set_payload(attachment.read())
+        encoders.encode_base64(part)
+        part.add_header('Content-Disposition', 'attachment; filename="plot_app_output.png"')
+        msg.attach(part)
+
+        # Send the email
+        server.send_message(msg)
+
+        # Close the server
+        server.quit()
+    except Exception as e:
+        messagebox.showerror("Error", f"An error occurred while sending the email: {str(e)}")    
 
 def launch():
     print("Launching app...")
@@ -147,7 +212,7 @@ def regenerate_data():
         messagebox.showerror("Error", "Failed to regenerate data.")
     return all_data
 
-def add_plot(startDate, endDate, preset, continous, all_data):
+def add_plot(startDate, endDate, preset, continous, all_data, customs = None):
     startDate = datetime.datetime.strptime(startDate.get(), "%Y-%m-%d").date() # Convert the strings to a date object
     endDate = datetime.datetime.strptime(endDate.get(), "%Y-%m-%d").date()
 
@@ -161,8 +226,13 @@ def add_plot(startDate, endDate, preset, continous, all_data):
         plots = ['counters', 'yeargroup', 'house']
     elif preset == "Sodexo":
         plots = ['counters', 'buys', 'counter_avg']
-    elif preset == "Custom":
+    elif preset == "All":
         plots = ['counters', 'buys', 'counter_avg', 'yeargroup', 'house']
+    elif preset == "Custom":
+        if customs is None or len(customs) == 0:
+            messagebox.showerror("Error", "No custom options selected.")
+            return
+        plots = customs
     plot(startDate, endDate, plots, metadata, continous, "app_output", False)
     '''
     # Create a new Tkinter window
@@ -197,17 +267,61 @@ def recap_menu():
     print("Recap menu selected.")
     root = setup_window("Recap Menu", 1)
 
-    startDate = tk.StringVar(root, value=current_date)
-    endDate = tk.StringVar(root, value = current_date)
+    startDate = tk.StringVar(root, value="2024-05-13")
+    endDate = tk.StringVar(root, value=current_date)
 
     # Add a back button
     button_back = tk.Button(root, text="Back", width=10, command=lambda: [root.destroy(), mode_choice()], font=small_button_font)
     button_back.grid(row=0, column=0, sticky='ew')
+
+    listbox = None # Initialize the listbox variable
+    custom_window = None #
+
+    presets = ["Student", "Sodexo", "All", "Custom"]
+    choices = ['counters', 'buys', 'counter_avg', 'yeargroup', 'house']
     
-    # Add presets dropdown menu
-    presets = ["Student", "Sodexo", "Custom"]
+    def get_selected_options(preset_var):
+        nonlocal listbox  # Use the outer variable
+        # Check if the selected preset is "Custom"
+        if preset_var.get() == "Custom" and listbox is not None:
+            # Get the selected options from the listbox
+            return [listbox.get(i) for i in listbox.curselection()]
+        else:
+            return None
+    
+    def on_preset_change(preset_var):
+        nonlocal root, custom_window, listbox  # Use the outer variable
+        # Check if the selected preset is "Custom"
+        if preset_var.get() == "Custom":    
+            # Open the custom window
+            custom_window, listbox = open_custom_window(root)
+        else:
+            # Close the listbox if it exists
+            if custom_window is not None:
+                custom_window.destroy()
+                listbox = None
+
+    def open_custom_window(root):
+        nonlocal choices
+        # Create a new window
+        custom_window = tk.Toplevel(root)
+        custom_window.title("Custom Preset")
+
+        # Add a label to the window
+        label = tk.Label(custom_window, text="Pick and order multiple choices:", font=button_font, fg='purple')
+        label.pack()
+
+        # Add a listbox to the window
+        listbox = tk.Listbox(custom_window, selectmode=tk.MULTIPLE, font=button_font)
+        for choice in choices:
+            listbox.insert(tk.END, choice)
+        listbox.pack()
+
+        return custom_window, listbox
+    
     preset_var = tk.StringVar(root)
     preset_var.set(presets[0])  # default value
+    preset_var.trace_add("write", lambda *args: on_preset_change(preset_var))
     dropdown_presets = tk.OptionMenu(root, preset_var, *presets)
     dropdown_presets.grid(row=2, column=0, sticky='ew')
     dropdown_presets.configure(font=dropdown_font)  # Change the font and size
@@ -225,14 +339,18 @@ def recap_menu():
         switch_continuous.config(fg='green' if continuous_var.get() else 'red')
 
     # Create a checkbutton that acts as a switch
-    switch_continuous = tk.Checkbutton(root, text="Continuous", variable=continuous_var, command=update_color, font=button_font)
+    switch_continuous = tk.Checkbutton(root, text="Continuous Timeline", variable=continuous_var, command=update_color, font=button_font)
     switch_continuous.grid(row=3, column=1, sticky='ew')
 
     # Update the color of the text initially
     update_color()
     
+    def save_preset():
+        # Code to save the preset goes here
+        pass
+
     # Add "Save Preset" button
-    button_save_preset = tk.Button(root, text="Save Preset", font=button_font)
+    button_save_preset = tk.Button(root, text="Save Preset", command=save_preset, font=button_font)
     button_save_preset.grid(row=2, column=1, sticky='ew')
     '''
         # Add categories dropdown menu
@@ -254,10 +372,10 @@ def recap_menu():
     button_regenerate.grid(row=3, column=0, sticky='ew')
 
     # Add plot and mail buttons
-    button_add_plot = tk.Button(root, text="Preview", command=lambda: add_plot(startDate, endDate, preset_var.get(), continuous_var.get(), all_data), font=button_font) # Add plot
+    button_add_plot = tk.Button(root, text="Preview", command=lambda: add_plot(startDate, endDate, preset_var.get(), continuous_var.get(), all_data, get_selected_options(preset_var)), font=button_font) # Add plot
     button_add_plot.grid(row=5, column=0, sticky='ew')
 
-    button_send_mail = tk.Button(root, text="Send Mail", font=button_font) # Send mail
+    button_send_mail = tk.Button(root, text="Send Mail", command=ask_credentials, font=button_font) # sender, recipient
     button_send_mail.grid(row=5, column=1, sticky='ew')
 
     # Configure the grid to expand properly when the window is resized
