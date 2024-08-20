@@ -338,10 +338,6 @@ def recap_menu():
     dropdown_presets.grid(row=2, column=0, sticky='ew')
     dropdown_presets.configure(font=dropdown_font)  # Change the font and size
 
-    # Add "Save Preset" button
-    button_save_preset = tk.Button(root, text="Save Preset", font=button_font)
-    button_save_preset.grid(row=2, column=1, sticky='ew')
-
     # Create a variable to hold the state of the switch
     continuous_var = tk.BooleanVar()
     continuous_var.set(False)  # Default value
@@ -356,23 +352,7 @@ def recap_menu():
 
     # Update the color of the text initially
     update_color()
-    
-    def save_preset():
-        # Code to save the preset goes here
-        pass
 
-    # Add "Save Preset" button
-    button_save_preset = tk.Button(root, text="Save Preset", command=save_preset, font=button_font)
-    button_save_preset.grid(row=2, column=1, sticky='ew')
-    '''
-        # Add categories dropdown menu
-        categories = ["Category 1", "Category 2", "Category 3"]
-        category_var = tk.StringVar(root)
-        category_var.set(categories[0])  # default value
-        dropdown_categories = tk.OptionMenu(root, category_var, *categories)
-        dropdown_categories.grid(row=3, column=0, sticky='ew')
-        dropdown_categories.configure(font=dropdown_font)  # Change the font and size
-    '''
     # Add date buttons
     button_start_date = tk.Button(root, textvariable=startDate, command=lambda: select_date(root, startDate), font=button_font)
     button_start_date.grid(row=4, column=0, sticky='ew')
