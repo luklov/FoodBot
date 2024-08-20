@@ -321,26 +321,24 @@ def calculate_daily_average_wastage(all_data, startDate, endDate):
 
 def plot_counter_averages(daily_counter_wastage, ax):
     colors = ['b', 'g', 'r', 'c', 'm', 'y', 'k', 'orange', 'purple', 'brown', 'pink', 'gray', 'olive', 'cyan']  # Extended list of colors for the plot lines
+    averages = []
+    counters = []
     for i, (counter, daily_wastage) in enumerate(daily_counter_wastage.items()):
-        # Sort the dates
-        sorted_dates = sorted(daily_wastage.keys(), key=lambda date: datetime.strptime(date, '%Y-%m-%d'))
-        sorted_wastages = [daily_wastage[date] for date in sorted_dates]
-        color = colors[i % len(colors)]  # Choose a color from the list
-        ax.plot(sorted_dates, sorted_wastages, '-', label=counter, color=color)
-
         # Calculate the net average wastage
-        total_wastage = sum(sorted_wastages)
-        num_days = len(sorted_wastages)
+        total_wastage = sum(daily_wastage.values())
+        num_days = len(daily_wastage)
         average_wastage = total_wastage / num_days if num_days else 0
+        averages.append(average_wastage)
+        counters.append(counter)
 
-        # Plot the average wastage as a horizontal line
-        ax.axhline(average_wastage, color=color, linestyle='--', alpha=1)
+    # Plot the average wastage as a vertical bar chart
+    ax.bar(counters, averages, color=colors[:len(counters)], edgecolor='black', alpha=0.7)
 
-    plt.gcf().autofmt_xdate()
     ax.set_title('Counter Averages Over Time')  # Add a title
-    ax.set_xlabel('Date')  # Add x-axis label
+    ax.set_xlabel('Counter')  # Add x-axis label
     ax.set_ylabel('Average Wastage (grams)')  # Add y-axis label
-    ax.legend(prop = font)
+
+    ax.set_xticklabels(counters, fontproperties=font) # Support for Chinese characters
 
 def cumulative_plot_waste(all_data, ax, startDate, endDate):
     daily_counter_wastage = {}
@@ -405,6 +403,8 @@ def cumulative_spec_plot_weights(all_data, ax, ospec, start_date=None, end_date=
         # Create a list of all dates in the range
         all_dates = [start_date + timedelta(days=i) for i in range((end_date - start_date).days + 1)]
         all_dates = [date.strftime('%Y-%m-%d') for date in all_dates]  # Convert dates back to strings
+    else:
+        all_dates = []
 
     spec_wastage = {}
     noncount = 0
@@ -421,7 +421,7 @@ def cumulative_spec_plot_weights(all_data, ax, ospec, start_date=None, end_date=
         for day, day_data in member_data.items():
             if day == 'name' or day == 'house' or day == 'yeargroup' or day == 'formclass': # Skip non-day data
                 continue
-
+            
             day_date = datetime.strptime(day, "%Y-%m-%d").date()
             if day_date < start_date or day_date > end_date:  # Skip days outside the date range
                 continue
@@ -429,41 +429,42 @@ def cumulative_spec_plot_weights(all_data, ax, ospec, start_date=None, end_date=
             has_weights = 'weights' in day_data and day_data['weights']
 
             if has_weights:
+                
                 total_weight = sum(day_data['weights'])
                 if day not in spec_wastage[member_spec]:
+                    if not continuous and day not in all_dates:
+                            all_dates.append(day) # Compile list of all days with data
                     spec_wastage[member_spec][day] = 0
                 spec_wastage[member_spec][day] += total_weight 
 
-    print(f"Skipped {noncount} members without a {ospec}.")            
+    print(f"Skipped {noncount} members without a {ospec}.")   
+
     cumulative_spec_wastage = {}
+    all_dates = sorted(all_dates, key=lambda date: datetime.strptime(date, '%Y-%m-%d')) # in case not continuous
 
     for spec, daily_wastage in spec_wastage.items():
         cumulative_spec_wastage[spec] = {}  # Initialize the dictionary for the spec
-        if continuous:
-            # Fill in missing dates with a wastage of 0
-            for date in all_dates:
-                if date not in daily_wastage:
-                    daily_wastage[date] = 0
 
-        # Sort the dates
-        sorted_dates = sorted(daily_wastage.keys(), key=lambda date: datetime.strptime(date, '%Y-%m-%d'))
         # Initialize the cumulative total
         cumulative_total = 0
-        for date in sorted_dates:
+
+        # Fill in missing dates with a wastage of 0
+        for date in all_dates:
+            if date not in daily_wastage:
+                daily_wastage[date] = 0
+
             # Add the wastage for the current day to the cumulative total
             cumulative_total += daily_wastage[date]
             # Store the cumulative total for the current day
             cumulative_spec_wastage[spec][date] = cumulative_total
 
-    for spec, daily_wastage in cumulative_spec_wastage.items():
         # Sort the dates
-        sorted_dates = sorted(daily_wastage.keys(), key=lambda date: datetime.strptime(date, '%Y-%m-%d'))
-        sorted_wastage = [daily_wastage[date] for date in sorted_dates]
+        sorted_wastage = [cumulative_spec_wastage[spec][date] for date in all_dates]
         # Plot the data
         if ospec == 'house' and spec in house_colors:  # If the spec is 'house' and the house name is in the color mapping
-            ax.plot(sorted_dates, sorted_wastage, '-', label=spec, color=house_colors[spec])  # Use the corresponding color
+            ax.plot(all_dates, sorted_wastage, '-', label=spec, color=house_colors[spec])  # Use the corresponding color
         else:
-            ax.plot(sorted_dates, sorted_wastage, '-', label=spec)  # Use the default color
+            ax.plot(all_dates, sorted_wastage, '-', label=spec)  # Use the default color
 
     plt.gcf().autofmt_xdate()  # Optional: for better formatting of date labels
     ax.set_title(f'Cumulative Wastage Over Time by {ospec}')  # Add a title

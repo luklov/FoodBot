@@ -228,7 +228,7 @@ def add_plot(startDate, endDate, preset, continous, all_data, customs = None):
     metadata = analyze_data(all_data, startDate, endDate) # only analyze selected days data
 
     if preset == "Student":
-        plots = ['sodexo', 'yeargroup', 'house']
+        plots = ['yeargroup', 'house', 'formclass']
     elif preset == "Sodexo":
         plots = ['counters', 'buys', 'counter_avg']
     elif preset == "All":
@@ -241,7 +241,7 @@ def add_plot(startDate, endDate, preset, continous, all_data, customs = None):
 
     if "formclass" in plots:
         # Prompt the user to enter a list of year groups
-        year_groups_input = simpledialog.askstring("Input", "Enter year groups separated by commas:")
+        year_groups_input = simpledialog.askstring("Formclass Input", "Enter year groups to show formclasses, separated by commas:")
 
         # Split the input string into a list of year groups
         year_groups = [year_group.strip() for year_group in year_groups_input.split(',')]
