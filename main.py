@@ -16,6 +16,8 @@ font = FontProperties(fname="/System/Library/Fonts/PingFang.ttc")
 directory = 'data'
 prefix = '餐线消费数据-'
 
+dataFilename = 'new_merged_data.json' #merged_data.json
+
 def make_conversion_dicts():
     # Merge the Excel data and API data based on user ID (peopleCard)
     conversion_table = pd.read_excel('conversion.xls')
@@ -27,7 +29,7 @@ def getDate():
     # Return the current date
     return datetime.now().strftime('%Y-%m-%d')
 
-def load_data(file_path = 'combined_data/merged_data.json'):
+def load_data(file_path = f'combined_data/{dataFilename}'):
     with open(file_path, 'r') as f:
         all_data = json.load(f)
     return all_data
@@ -85,7 +87,7 @@ def getStation(station_data, filename):
 
     file_path = os.path.join(directory, f'{prefix}{filename}.xlsx')
     excel_file = pd.read_excel(file_path, sheet_name=None)  # Read the Excel file
-    if filename != 'June':
+    if filename != 'June' and filename != 'Sep':
         station_data[filename] = list(excel_file.values())[0]  # Store the DataFrame in the dictionary
     else:
         for sheet_name, sheet_data in excel_file.items():
@@ -126,18 +128,19 @@ def report(startDate, endDate):
     return all_data
 
 def merge_data(station_data, weight_data, member_info, conversion_dict, reverse_conversion_dict, startDate, endDate):
-    all_data = {}
-    found1, found2 = 0, 0
-    statCount, weightCount = 0, 0
-    counter, goodcount = 0, 0
+    global dataFilename
+    all_data = {} # Initializing dict to store merged data
+    statF, weightF = 0, 0 # Counters for IDs found in the conversion table
+    statNF, weightNF = 0, 0 # Counters for IDs not found in the conversion table
+    memF, memNF = 0, 0 # Counters for members with and without info
 
-    # Iterate over the dates in between
+    
     currentDate = startDate
-    while currentDate <= endDate:
-        day = currentDate.strftime('%Y-%m-%d')  # Convert the date back to a string
+    while currentDate <= endDate: # Iterate over the dates in between
+        day = currentDate.strftime('%Y-%m-%d')  # Convert the date obj back to a string
 
-        # Process station_data for the current day
-        if day in station_data:
+        
+        if day in station_data: # Process station_data for the current day
             df = station_data[day]
             member_id = df['会员编号']  # Get list of IDs on each day
             pos_name = df['POS机名称']  # Get list of POS names on each day
@@ -147,10 +150,10 @@ def merge_data(station_data, weight_data, member_info, conversion_dict, reverse_
                     continue
                 api_id = convert_cnt_id(conversion_dict, cnt_id)  # short to long ID
                 if not api_id:  # Skip the person if the ID cannot be converted
-                    statCount += 1
+                    statNF += 1
                     continue
                 api_id = int(api_id)
-                found1 += 1
+                statF += 1
 
                 if cnt_id not in all_data:
                     all_data[cnt_id] = {}
@@ -160,9 +163,9 @@ def merge_data(station_data, weight_data, member_info, conversion_dict, reverse_
                 all_data[cnt_id][day]['stations'].append(pos_name[i])
                 if 'name' not in all_data[cnt_id]:
                     if api_id not in member_info:
-                        counter += 1
+                        memNF += 1
                         continue
-                    goodcount += 1
+                    memF += 1
                     all_data[cnt_id]['name'] = member_info[api_id]['peopleName']
                     all_data[cnt_id]['house'] = member_info[api_id]['house']
                     all_data[cnt_id]['yeargroup'] = member_info[api_id]['yeargroup']
@@ -176,9 +179,9 @@ def merge_data(station_data, weight_data, member_info, conversion_dict, reverse_
                 cnt_id = convert_api_id(reverse_conversion_dict, api_id)
                 api_id = int(api_id)
                 if not cnt_id:  # Skip the person if the ID cannot be converted
-                    weightCount += 1
+                    weightNF += 1
                     continue
-                found2 += 1
+                weightF += 1
                 if cnt_id not in all_data:
                     all_data[cnt_id] = {}
                 if day not in all_data[cnt_id]:
@@ -187,19 +190,19 @@ def merge_data(station_data, weight_data, member_info, conversion_dict, reverse_
                 for weight in weight_info['weights']:
                     all_data[cnt_id][day]['weights'].append(weight)
                 if 'name' not in all_data[cnt_id]:
-                    goodcount += 1
+                    memF += 1
                     all_data[cnt_id]['name'] = member_info[api_id]['peopleName']
                     all_data[cnt_id]['house'] = member_info[api_id]['house']
                     all_data[cnt_id]['yeargroup'] = member_info[api_id]['yeargroup']
                     all_data[cnt_id]['formclass'] = member_info[api_id]['formclass']
 
         currentDate += timedelta(days=1)  # Move to the next day
-    print(f"{goodcount}/{goodcount + counter} members have info.")
-    print(f"1: Found {found1} IDs and {statCount} IDs were not found in the conversion table.")
-    print(f"2: Found {found2} IDs and {weightCount} IDs were not found in the conversion table.")
+    print(f"{memF}/{len(weight_data)} members with info found in the conversion table.")
+    print(f"Stations: Found {statF} IDs and {statNF} IDs were not found in the conversion table.")
+    print(f"Weights: Found {weightF} IDs and {weightNF} IDs were not found in the conversion table.")
 
     # Save the dictionary to a JSON file
-    with open('combined_data/merged_data.json', 'w') as f:
+    with open(f'combined_data/{dataFilename}', 'w') as f:
         json.dump(all_data, f, default=set_default)
 
     return all_data
@@ -383,9 +386,12 @@ def cumulative_plot_waste(all_data, ax, startDate, endDate):
     for counter, daily_wastage in cumulative_counter_wastage.items():
         # Sort the dates
         sorted_dates = sorted(daily_wastage.keys(), key=lambda date: datetime.strptime(date, '%Y-%m-%d'))
+        # Create a clone of sorted_dates with dates in 'MM-DD' format
+        sorted_dates_short = [datetime.strptime(date, '%Y-%m-%d').strftime('%m-%d') for date in sorted_dates]
+
         sorted_wastages = [daily_wastage[date] for date in sorted_dates]
         # Plot the data
-        ax.plot(sorted_dates, sorted_wastages, '-', label=counter)
+        ax.plot(sorted_dates_short, sorted_wastages, '-', label=counter)
     
     plt.gcf().autofmt_xdate()  # Optional: for better formatting of date labels
     ax.set_title('Cumulative Food Waste Over Time')  # Add a title
@@ -437,10 +443,13 @@ def cumulative_spec_plot_weights(all_data, ax, ospec, start_date=None, end_date=
                     spec_wastage[member_spec][day] = 0
                 spec_wastage[member_spec][day] += total_weight 
 
-    print(f"Skipped {noncount} members without a {ospec}.")   
+    print(f"Skipped {noncount}/{len(all_data)} members without {ospec} data.")
 
     cumulative_spec_wastage = {}
     all_dates = sorted(all_dates, key=lambda date: datetime.strptime(date, '%Y-%m-%d')) # in case not continuous
+
+    # Create a clone of all_dates with dates in 'MM-DD' format
+    all_dates_short = [datetime.strptime(date, '%Y-%m-%d').strftime('%m-%d') for date in all_dates]
 
     for spec, daily_wastage in spec_wastage.items():
         cumulative_spec_wastage[spec] = {}  # Initialize the dictionary for the spec
@@ -460,11 +469,12 @@ def cumulative_spec_plot_weights(all_data, ax, ospec, start_date=None, end_date=
 
         # Sort the dates
         sorted_wastage = [cumulative_spec_wastage[spec][date] for date in all_dates]
+
         # Plot the data
         if ospec == 'house' and spec in house_colors:  # If the spec is 'house' and the house name is in the color mapping
-            ax.plot(all_dates, sorted_wastage, '-', label=spec, color=house_colors[spec])  # Use the corresponding color
+            ax.plot(all_dates_short, sorted_wastage, '-', label=spec, color=house_colors[spec])  # Use the corresponding color
         else:
-            ax.plot(all_dates, sorted_wastage, '-', label=spec)  # Use the default color
+            ax.plot(all_dates_short, sorted_wastage, '-', label=spec)  # Use the default color
 
     plt.gcf().autofmt_xdate()  # Optional: for better formatting of date labels
     ax.set_title(f'Cumulative Wastage Over Time by {ospec}')  # Add a title
@@ -490,9 +500,11 @@ def cumulative_plot_buys(counter_purchases, ax):
     for counter, daily_purchases in cumulative_counter_purchases.items():
         # Sort the dates
         sorted_dates = sorted(daily_purchases.keys(), key=lambda date: datetime.strptime(date, '%Y-%m-%d'))
+        # Create a clone of sorted_dates with dates in 'MM-DD' format
+        sorted_dates_short = [datetime.strptime(date, '%Y-%m-%d').strftime('%m-%d') for date in sorted_dates]
         sorted_purchases = [daily_purchases[date] for date in sorted_dates]
         # Plot the data
-        ax.plot(sorted_dates, sorted_purchases, '-', label=counter)
+        ax.plot(sorted_dates_short, sorted_purchases, '-', label=counter)
     
     plt.gcf().autofmt_xdate()  # Optional: for better formatting of date labels
     ax.set_title('Cumulative Purchases Over Time')  # Add a title

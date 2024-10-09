@@ -208,6 +208,10 @@ def select_date(root, date_var):
 def regenerate_data():
     start_date = "2024-05-13"
     end_date = current_date
+
+    start_date = datetime.datetime.strptime(start_date, "%Y-%m-%d").date() # Convert the strings to a date object
+    end_date = datetime.datetime.strptime(end_date, "%Y-%m-%d").date()
+
     all_data = report(start_date, end_date)
     if all_data:
         messagebox.showinfo("Success", "Data regenerated successfully.")
@@ -247,31 +251,9 @@ def add_plot(startDate, endDate, preset, continous, all_data, customs = None):
         year_groups = [year_group.strip() for year_group in year_groups_input.split(',')]
     
     plot(startDate, endDate, plots, metadata, continous, "app_output", year_groups)
-    '''
-    # Create a new Tkinter window
-    window = tk.Tk()
-
-    # Create a new figure and a new axes
-    fig = Figure(figsize=(5, 5))
-    ax = fig.add_subplot(111)
-
-    # Load the image file
-    img = mpimg.imread('plots/plot_app_output.png')
-
-    # Display the image in the axes
-    ax.imshow(img)
-
-    # Create a canvas and add it to the window
-    canvas = FigureCanvasTkAgg(fig, master=window)
-    canvas.draw()
-    canvas.get_tk_widget().pack()
-
-    # Start the Tkinter event loop
-    window.mainloop()
-    '''
 
 def recap_menu():
-    all_data = load_data()
+    all_data = {}
 
     def call_regenerate_data():
         global all_data
@@ -360,15 +342,18 @@ def recap_menu():
     button_end_date = tk.Button(root, textvariable=endDate, command=lambda: select_date(root, endDate), font=button_font) # End date select
     button_end_date.grid(row=4, column=1, sticky='ew')
 
+    # Add regenerate data button
     button_regenerate = tk.Button(root, text="Regenerate Data", command=call_regenerate_data, font=button_font) # Regenerate merged data file
     button_regenerate.grid(row=3, column=0, sticky='ew')
 
-    # Add plot and mail buttons
-    button_add_plot = tk.Button(root, text="Preview", command=lambda: add_plot(startDate, endDate, preset_var.get(), continuous_var.get(), all_data, get_selected_options(preset_var)), font=button_font) # Add plot
+    def update_and_add_plot():
+        all_data = load_data()
+        add_plot(startDate, endDate, preset_var.get(), continuous_var.get(), all_data, get_selected_options(preset_var))
+    
+    # Add plot button
+    button_add_plot = tk.Button(root, text="Preview", command=update_and_add_plot, font=button_font) # Add plot
     button_add_plot.grid(row=5, column=0, sticky='ew')
 
-    button_send_mail = tk.Button(root, text="Send Mail", command=ask_credentials, font=button_font) # sender, recipient
-    button_send_mail.grid(row=5, column=1, sticky='ew')
 
     # Configure the grid to expand properly when the window is resized
     for i in range(3):
