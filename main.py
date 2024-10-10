@@ -520,10 +520,7 @@ def set_default(obj):
 def convert_cnt_id(conversion_dict, cnt_id): # short ID to long ID
     #print(conversion_dict)
     api_id = conversion_dict.get(cnt_id, None)
-    '''if not api_id:
-        print(f"ID {cnt_id} not found in the conversion table.")
-    else:
-        print(f"Converted from {cnt_id} to {api_id}")'''
+    
     return api_id
 
 def convert_api_id(reverse_conversion_dict, api_id): # long ID to short ID, REVERSE
