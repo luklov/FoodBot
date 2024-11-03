@@ -4,6 +4,8 @@ import collections
 
 import matplotlib.pyplot as plt
 import matplotlib.dates as mdates
+import matplotlib.patheffects as pe
+from matplotlib.colors import to_rgba
 
 import json
 import os
@@ -16,12 +18,54 @@ font = FontProperties(fname="/System/Library/Fonts/PingFang.ttc")
 directory = 'data'
 prefix = '餐线消费数据-'
 
+dataFilename = 'merged_data.json' #merged_data.json
+
 def make_conversion_dicts():
-    # Merge the Excel data and API data based on user ID (peopleCard)
-    conversion_table = pd.read_excel('conversion.xls')
-    conversion_dict = dict(zip(conversion_table['会员编号'], conversion_table['卡号']))
-    reverse_conversion_dict = {v: k for k, v in conversion_dict.items()}
+    
+    conversion_table = pd.read_excel('conversion.xls') # Load the Excel file
+
+    conversion_table['卡号'] = conversion_table['卡号'].apply(lambda x: str(int(x)) if pd.notnull(x) else 'NaN') # Convert all the '卡号' values from floats to integers
+
+    conversion_dict = dict(zip(conversion_table['会员编号'], conversion_table['卡号'])) # Create a dictionary mapping the two ID systems
+    reverse_conversion_dict = {v: str(k) for k, v in conversion_dict.items()} # Create a reverse dictionary mapping the two ID systems
+
+    if not os.path.exists('conversion_dict'): # Create the directory if it doesn't exist
+        os.makedirs('conversion_dict')
+
+    # Save the dictionaries as JSON files
+    with open('conversion_dict/conversion_dict.json', 'w') as f:
+        json.dump(conversion_dict, f)
+    with open('conversion_dict/reverse_conversion_dict.json', 'w') as f:
+        json.dump(reverse_conversion_dict, f)
+
     return conversion_dict, reverse_conversion_dict
+
+def convert_cnt_id(conversion_dict, cnt_id): # short ID to long ID
+    cnt_id = str(cnt_id) # int to string
+    api_id = conversion_dict.get(str(cnt_id), None)
+
+    return api_id
+
+def convert_api_id(reverse_conversion_dict, api_id): # long ID to short ID, REVERSE
+    api_id = str(int(api_id)) # float to int to string
+    cnt_id = reverse_conversion_dict.get(api_id, None)
+
+    return cnt_id
+
+def load_conversion_dicts():
+    if not os.path.exists('conversion_dict'):
+        print("Conversion dictionaries not found. Creating new dictionaries...")
+        conversion_dict, reverse_conversion_dict = make_conversion_dicts()
+
+    # Load the dictionaries from the JSON files
+    with open('conversion_dict/conversion_dict.json', 'r') as f:
+        conversion_dict = json.load(f)
+    with open('conversion_dict/reverse_conversion_dict.json', 'r') as f:
+        reverse_conversion_dict = json.load(f)
+
+    return conversion_dict, reverse_conversion_dict
+
+
 
 def getDate():
     # Return the current date
@@ -32,52 +76,48 @@ def load_data(file_path = 'combined_data/merged_data.json'):
         all_data = json.load(f)
     return all_data
 
-def getWeightsbyDate(startDate, endDate): # PASS IN WEIGHT DATA + MEMBER INFO
-    weight_data = {}
+def getWeightsbyDate(startDate, endDate):
+    weight_data = {} # Initialize dictionary to store weight data
     member_info = {}
 
     api_url = "http://10.10.0.44/beijingdev/dev/getrecord"
-    startDateForm = startDate.strftime('%Y-%m-%d')
+    startDateForm = startDate.strftime('%Y-%m-%d') # Convert the date objects to strings
     endDateForm = endDate.strftime('%Y-%m-%d')
-    params = {
+    params = { # Parameters for the API request
         "beginTime": startDateForm,
         "endTime": endDateForm
     }
     try:
-        response = requests.get(api_url, params=params)
-        response.raise_for_status()
-        api_data = response.json()
-    except requests.exceptions.JSONDecodeError:
+        response = requests.get(api_url, params=params) # Send a GET request to the API
+        response.raise_for_status() # Check for any errors in the response
+        api_data = response.json() # Parse the JSON response
+    except requests.exceptions.JSONDecodeError: # Handle JSON decoding errors
         print(f"Error: Unable to decode JSON response from API. Response text: {response.text}")
         api_data = []
-    except requests.exceptions.RequestException as e:
+    except requests.exceptions.RequestException as e: # Handle other request exceptions
         print(f"API request error: {e}")
         api_data = []
 
     # Store API data into the global dictionary
-    for data in api_data:
-        peopleCard = data.get('peopleCard')
-        cardNum = peopleCard.lstrip('0')
-        day = data.get('addTime').split(' ')[0]
-        if day not in weight_data:
+    for data in api_data: # Iterate over the data from the API
+        peopleCard = data.get('peopleCard') # Gets card ID of the person
+        cardNum = peopleCard.lstrip('0') # Removes leading zeros from the card ID
+        day = data.get('addTime').split(' ')[0] # Gets the date from the 'addTime' field
+        if day not in weight_data: # If the date is not in the dictionary, add it
             weight_data[day] = {}
-        if cardNum not in weight_data[day]:
+        if cardNum not in weight_data[day]: # If the card ID is not in the weights dictionary, add it
             weight_data[day][cardNum] = {
-                'peopleName': data.get('peopleName'),
-                'house': data.get('house'),
-                'yeargroup': data.get('yeargroup'),
-                'formclass': data.get('formclass'),
                 'weights': []
             }
         cardInt = int(cardNum)
-        if cardInt not in member_info:
+        if cardInt not in member_info: # If the card ID is not in the member info dictionary, add it
             member_info[cardInt] = {
                 'peopleName': data.get('peopleName'),
                 'house': data.get('house'),
                 'yeargroup': data.get('yeargroup'),
                 'formclass': data.get('formclass')
             }
-        weight_data[day][cardNum]['weights'].append(data['weight'])
+        weight_data[day][cardNum]['weights'].append(data['weight']) # Add the weight to the dictionary
 
     return weight_data, member_info
 
@@ -119,31 +159,30 @@ def report(startDate, endDate):
         return
 
     #print(f"Station Data: {station_data}")
-    #print(f"Weight Data: {weight_data}")
-    conversion_dict, reverse_conversion_dict = make_conversion_dicts()
+    #print(f"Weight Data: {weight_data}")›
+    conversion_dict, reverse_conversion_dict = load_conversion_dicts()
     all_data = merge_data(station_data, weight_data, member_info, conversion_dict, reverse_conversion_dict, startDate, endDate)
 
     return all_data
 
 def merge_data(station_data, weight_data, member_info, conversion_dict, reverse_conversion_dict, startDate, endDate):
-    all_data = {}
-    found1, found2 = 0, 0
-    statCount, weightCount = 0, 0
-    counter, goodcount = 0, 0
+    global dataFilename
+    all_data = {} # Initializing dict to store merged data
+    statF, weightF = 0, 0 # Counters for IDs found in the conversion table
+    statNF, weightNF = 0, 0 # Counters for IDs not found in the conversion table
+    memF, memNF = 0, 0 # Counters for members with and without info
 
-    # Iterate over the dates in between
     currentDate = startDate
-    while currentDate <= endDate:
-        day = currentDate.strftime('%Y-%m-%d')  # Convert the date back to a string
-
-        # Process station_data for the current day
-        if day in station_data:
+    while currentDate <= endDate: # Iterate over the dates in between
+        day = currentDate.strftime('%Y-%m-%d')  # Convert the date obj back to a string
+  
+        if day in station_data: # Station data present for that day
             df = station_data[day]
             member_id = df['会员编号']  # Get list of IDs on each day
             pos_name = df['POS机名称']  # Get list of POS names on each day
 
             for i, cnt_id in enumerate(member_id):
-                if cnt_id == 'No Match':  # Skip if ID in June data not convertable
+                if cnt_id == 'No Match':  # Skip if ID not convertable
                     continue
                 api_id = convert_cnt_id(conversion_dict, cnt_id)  # short to long ID
                 if not api_id:  # Skip the person if the ID cannot be converted
@@ -152,43 +191,41 @@ def merge_data(station_data, weight_data, member_info, conversion_dict, reverse_
                 api_id = int(api_id)
                 found1 += 1
 
-                if cnt_id not in all_data:
+                if cnt_id not in all_data: # Initializes ID key if it doesn't exist
                     all_data[cnt_id] = {}
-                if day not in all_data[cnt_id]:
+                if day not in all_data[cnt_id]: # Then initializes day key for that ID if it doesn't exist
                     all_data[cnt_id][day] = {'stations': [], 'weights': []}
 
-                all_data[cnt_id][day]['stations'].append(pos_name[i])
-                if 'name' not in all_data[cnt_id]:
-                    if api_id not in member_info:
-                        counter += 1
+                all_data[cnt_id][day]['stations'].append(pos_name[i]) # Adds station name data to the dictionary
+                if 'name' not in all_data[cnt_id]: # If member info not already in the dictionary
+                    if api_id not in member_info: # Skip if member info not found
+                        memNF += 1
                         continue
-                    goodcount += 1
-                    all_data[cnt_id]['name'] = member_info[api_id]['peopleName']
+                    memF += 1
+                    all_data[cnt_id]['name'] = member_info[api_id]['peopleName'] # Adds member info to the dictionary
                     all_data[cnt_id]['house'] = member_info[api_id]['house']
                     all_data[cnt_id]['yeargroup'] = member_info[api_id]['yeargroup']
                     all_data[cnt_id]['formclass'] = member_info[api_id]['formclass']
 
-                # add code to set the name house etc
-
         # Process weight_data for the current day
-        if day in weight_data:
+        if day in weight_data: # Weight data present for that day
             for api_id, weight_info in weight_data[day].items():
                 cnt_id = convert_api_id(reverse_conversion_dict, api_id)
                 api_id = int(api_id)
                 if not cnt_id:  # Skip the person if the ID cannot be converted
                     weightCount += 1
                     continue
-                found2 += 1
-                if cnt_id not in all_data:
+                weightF += 1
+                if cnt_id not in all_data: # Initializes ID key if it doesn't exist
                     all_data[cnt_id] = {}
-                if day not in all_data[cnt_id]:
+                if day not in all_data[cnt_id]: # Then initializes day key for that ID if it doesn't exist
                     all_data[cnt_id][day] = {'stations': [], 'weights': []}
 
-                for weight in weight_info['weights']:
+                for weight in weight_info['weights']: # Adds weight data to the dictionary
                     all_data[cnt_id][day]['weights'].append(weight)
-                if 'name' not in all_data[cnt_id]:
-                    goodcount += 1
-                    all_data[cnt_id]['name'] = member_info[api_id]['peopleName']
+                if 'name' not in all_data[cnt_id]: # If member info not already in the dictionary
+                    memF += 1
+                    all_data[cnt_id]['name'] = member_info[api_id]['peopleName'] # Adds member info to the dictionary
                     all_data[cnt_id]['house'] = member_info[api_id]['house']
                     all_data[cnt_id]['yeargroup'] = member_info[api_id]['yeargroup']
                     all_data[cnt_id]['formclass'] = member_info[api_id]['formclass']
@@ -244,80 +281,58 @@ def categorize_data(all_data):
 
     return categories, both_counter_weights
 
-def calculate_totals(all_data, startDate, endDate): # change to fit dates
+def calculate_totals_and_daily_average_wastage(all_data, startDate, endDate):
     counter_wastage = {}
     counter_tally = {}
     counter_purchases = {}
-
-    for member, member_data in all_data.items():
-        for day, day_data in member_data.items():
-            if day == 'name' or day == 'house' or day == 'yeargroup' or day == 'formclass': # Skip non-day data
-                continue
-
-            day_date = datetime.strptime(day, "%Y-%m-%d").date()
-            if day_date < startDate or day_date > endDate:  # Skip days outside the date range
-                continue
-
-            has_weights = 'weights' in day_data and day_data['weights']
-            has_counters = 'stations' in day_data and day_data['stations']
-
-            if has_weights and has_counters:
-                total_weight = sum(day_data['weights'])
-                weight_per_counter = total_weight / len(day_data['stations'])
-
-                for counter in day_data['stations']:
-                    if counter not in counter_wastage:
-                        counter_wastage[counter] = 0
-                        counter_tally[counter] = 0
-                        counter_purchases[counter] = {}
-                    if day not in counter_purchases[counter]:
-                        counter_purchases[counter][day] = 0
-                    counter_wastage[counter] += weight_per_counter
-                    counter_tally[counter] += 1
-                    counter_purchases[counter][day] += 1
-
-    average_wastage = {counter: total_wastage / counter_tally[counter] for counter, total_wastage in counter_wastage.items()}
-
-    return average_wastage, counter_wastage, counter_tally, counter_purchases
-
-def calculate_daily_average_wastage(all_data, startDate, endDate):
     daily_counter_wastage = {}
-
     counter_totals = {}
     counter_counts = {}
 
-    for member, member_data in all_data.items():
-        for day, day_data in member_data.items():
-            if day == 'name' or day == 'house' or day == 'yeargroup' or day == 'formclass': # Skip non-day data
+    for member, member_data in all_data.items(): # Iterate over the members in the data
+        for day, day_data in member_data.items(): # Iterate over the days for each member
+            if day in ['name', 'house', 'yeargroup', 'formclass']:  # Skip non-day data
                 continue
 
-            day_date = datetime.strptime(day, "%Y-%m-%d").date() # Convert string to a date object
+            day_date = datetime.strptime(day, "%Y-%m-%d").date() # Convert the date string to a date object
             if day_date < startDate or day_date > endDate:  # Skip days outside the date range
                 continue
 
-            has_weights = 'weights' in day_data and day_data['weights']
-            has_counters = 'stations' in day_data and day_data['stations']
+            has_weights = 'weights' in day_data and day_data['weights'] # Check if the day data has weights and counters
+            has_counters = 'stations' in day_data and day_data['stations'] 
 
             if has_weights and has_counters:
-                total_weight = sum(day_data['weights'])
-                weight_per_counter = total_weight / len(day_data['stations'])
+                total_weight = sum(day_data['weights']) # Calculate the total wastage for the user on that day
+                weight_per_counter = total_weight / len(day_data['stations']) # Find average weight per counter, distributed evenly
 
-                for counter in day_data['stations']:
-                    if counter not in counter_totals:
+                for counter in day_data['stations']: # Iterate over the counters for the day
+                    if counter not in counter_wastage: # Initialize counter key in all the dictionaries if not present
+                        counter_wastage[counter] = 0
+                        counter_tally[counter] = 0
+                        counter_purchases[counter] = {}
                         counter_totals[counter] = {}
                         counter_counts[counter] = {}
-                    if day not in counter_totals[counter]:
+
+                    if day not in counter_purchases[counter]: # Then initialize day key in the nested dictionaries if not present
+                        counter_purchases[counter][day] = 0
                         counter_totals[counter][day] = 0
                         counter_counts[counter][day] = 0
+
+                    counter_wastage[counter] += weight_per_counter # Update data for all the dictionaries
+                    counter_tally[counter] += 1
+                    counter_purchases[counter][day] += 1
                     counter_totals[counter][day] += weight_per_counter
                     counter_counts[counter][day] += 1
 
-    for counter, days in counter_totals.items():
+    average_wastage = {counter: total_wastage / counter_tally[counter] for counter, total_wastage in counter_wastage.items()} # Calculate average wastage for each counter
+
+    for counter, days in counter_totals.items(): # Calculate average wastage for each counter for each day
         for day, total in days.items():
-            if counter not in daily_counter_wastage:
+            if counter not in daily_counter_wastage: # Initialize counter key in the daily wastage dictionary if not present
                 daily_counter_wastage[counter] = {}
             daily_counter_wastage[counter][day] = total / counter_counts[counter][day]
-    return daily_counter_wastage
+
+    return average_wastage, counter_wastage, counter_tally, counter_purchases, daily_counter_wastage
 
 def plot_counter_averages(daily_counter_wastage, ax):
     colors = ['b', 'g', 'r', 'c', 'm', 'y', 'k', 'orange', 'purple', 'brown', 'pink', 'gray', 'olive', 'cyan']  # Extended list of colors for the plot lines
@@ -401,70 +416,66 @@ def cumulative_spec_plot_weights(all_data, ax, ospec, start_date=None, end_date=
 
     if continuous:
         # Create a list of all dates in the range
-        all_dates = [start_date + timedelta(days=i) for i in range((end_date - start_date).days + 1)]
+        all_dates = [start_date + timedelta(days=i) for i in range((end_date - start_date).days + 1)] # Generate a list of dates in the range
         all_dates = [date.strftime('%Y-%m-%d') for date in all_dates]  # Convert dates back to strings
     else:
-        all_dates = []
+        all_dates = [] # Otherwise leave it empty for manual filling in
 
     spec_wastage = {}
     noncount = 0
-    for member, member_data in all_data.items():
-        member_spec = member_data.get(ospec)
+    for member, member_data in all_data.items(): # Iterate over the members in the data
+        member_spec = member_data.get(ospec) # Get the specified attribute for the member
         if not member_spec: # Skip members without the specified attribute
             noncount += 1
             continue
         if ospec == 'formclass' and member_data.get('yeargroup') not in year_groups: # Skip members not in the specified year groups
             continue
 
-        if member_spec not in spec_wastage:
+        if member_spec not in spec_wastage: # Initialize member_spec key if not present
             spec_wastage[member_spec] = {}
         for day, day_data in member_data.items():
             if day == 'name' or day == 'house' or day == 'yeargroup' or day == 'formclass': # Skip non-day data
                 continue
-            
+
             day_date = datetime.strptime(day, "%Y-%m-%d").date()
             if day_date < start_date or day_date > end_date:  # Skip days outside the date range
                 continue
 
             has_weights = 'weights' in day_data and day_data['weights']
-
             if has_weights:
-                
-                total_weight = sum(day_data['weights'])
-                if day not in spec_wastage[member_spec]:
-                    if not continuous and day not in all_dates:
-                            all_dates.append(day) # Compile list of all days with data
+                total_weight = sum(day_data['weights']) # Calculate the total wastage for the user on that day
+                if day not in spec_wastage[member_spec]: # Initialize day key in the member's specified attribute dict if not present 
+                    if not continuous and day not in all_dates: # If mode not set to continous the dates are manually filled into all_dates
+                        all_dates.append(day)
                     spec_wastage[member_spec][day] = 0
-                spec_wastage[member_spec][day] += total_weight 
+                spec_wastage[member_spec][day] += total_weight # Update the wastage for the day
 
     print(f"Skipped {noncount} members without a {ospec}.")   
 
     cumulative_spec_wastage = {}
-    all_dates = sorted(all_dates, key=lambda date: datetime.strptime(date, '%Y-%m-%d')) # in case not continuous
+    all_dates = sorted(all_dates, key=lambda date: datetime.strptime(date, '%Y-%m-%d')) # Sort the dates
 
-    for spec, daily_wastage in spec_wastage.items():
-        cumulative_spec_wastage[spec] = {}  # Initialize the dictionary for the spec
+    
+    all_dates_short = [datetime.strptime(date, '%Y-%m-%d').strftime('%m-%d') for date in all_dates] # Create a clone of all_dates with dates in 'MM-DD' format
 
-        # Initialize the cumulative total
+    for spec, daily_wastage in spec_wastage.items(): # Iterate over the specified attributes' data, e.g. each of the houses' wastage data
+        cumulative_spec_wastage[spec] = {}  # Initialize the cumulative dictionary for the spec
         cumulative_total = 0
-
-        # Fill in missing dates with a wastage of 0
-        for date in all_dates:
+        
+        for date in all_dates: # Fill in missing dates with a wastage of 0
             if date not in daily_wastage:
                 daily_wastage[date] = 0
 
-            # Add the wastage for the current day to the cumulative total
-            cumulative_total += daily_wastage[date]
-            # Store the cumulative total for the current day
-            cumulative_spec_wastage[spec][date] = cumulative_total
+            cumulative_total += daily_wastage[date] # Add the wastage for the current day to the cumulative total
+            cumulative_spec_wastage[spec][date] = cumulative_total # Store the cumulative total for the current day
 
         # Sort the dates
         sorted_wastage = [cumulative_spec_wastage[spec][date] for date in all_dates]
         # Plot the data
-        if ospec == 'house' and spec in house_colors:  # If the spec is 'house' and the house name is in the color mapping
-            ax.plot(all_dates, sorted_wastage, '-', label=spec, color=house_colors[spec])  # Use the corresponding color
+        if ospec == 'house' and spec in house_colors:  # If the spec is 'house' and the house name is in the color mapping dict
+            ax.plot(all_dates_short, sorted_wastage, '-', label=spec, color=house_colors[spec])  # Use the corresponding colors
         else:
-            ax.plot(all_dates, sorted_wastage, '-', label=spec)  # Use the default color
+            ax.plot(all_dates_short, sorted_wastage, '-', label=spec)  # Else use the default colors
 
     plt.gcf().autofmt_xdate()  # Optional: for better formatting of date labels
     ax.set_title(f'Cumulative Wastage Over Time by {ospec}')  # Add a title
@@ -504,21 +515,6 @@ def set_default(obj):
     if isinstance(obj, set):
         return list(obj)
     raise TypeError
-    
-def convert_cnt_id(conversion_dict, cnt_id): # short ID to long ID
-    #print(conversion_dict)
-    api_id = conversion_dict.get(cnt_id, None)
-    '''if not api_id:
-        print(f"ID {cnt_id} not found in the conversion table.")
-    else:
-        print(f"Converted from {cnt_id} to {api_id}")'''
-    return api_id
-
-def convert_api_id(reverse_conversion_dict, api_id): # long ID to short ID, REVERSE
-    api_id = float(api_id)
-    cnt_id = reverse_conversion_dict.get(api_id, None)
-
-    return cnt_id
 
 def rank_counters(average_wastage, total_wastage, counter_days): # Prints ranks of counters
     average_wastage_ranked = sorted(average_wastage.items(), key=lambda item: item[1], reverse=True)
@@ -538,8 +534,7 @@ def rank_counters(average_wastage, total_wastage, counter_days): # Prints ranks 
         print(f"{counter}: {days} buys")
 
 def analyze_data(all_data, startDate, endDate):
-    average_wastage, total_wastage, counter_tally, counter_purchases = calculate_totals(all_data, startDate, endDate)
-    daily_average_wastage = calculate_daily_average_wastage(all_data, startDate, endDate) 
+    average_wastage, total_wastage, counter_tally, counter_purchases, daily_average_wastage = calculate_totals_and_daily_average_wastage(all_data, startDate, endDate)
     #rank_counters(average_wastage, total_wastage, counter_tally)
     metadata = [all_data, average_wastage, total_wastage, counter_tally, counter_purchases, daily_average_wastage] # Store all metadata in a list
     return metadata
@@ -565,7 +560,7 @@ def test(startDateStr, endDateStr):
 
     metadata = analyze_data(all_data, startDate, endDate)
     run = 2
-
+    '''
     # STUDENT SIDE
     plots = ['counters', 'yeargroup', 'house']
     plot(startDate, endDate, plots, metadata, True, f"stu_continous{run}")
@@ -574,6 +569,17 @@ def test(startDateStr, endDateStr):
     plots = ['counters', 'buys', 'counter_avg']
     plot(startDate, endDate, plots, metadata, True, f"sod_continous{run}")
     plot(startDate, endDate, plots, metadata, False, f"sod_discrete{run}")
+    '''
+    # STUDENT SIDE
+    plots = ['counters', 'yeargroup', 'house']
+    plot_fullscreen(startDate, endDate, plots, metadata, True, f"stu_continous{run}")
+    plot_fullscreen(startDate, endDate, plots, metadata, False, f"stu_discrete{run}")
+    # SODEXO SIDE
+    plots = ['counters', 'buys', 'counter_avg']
+    plot_fullscreen(startDate, endDate, plots, metadata, True, f"sod_continous{run}")
+    plot_fullscreen(startDate, endDate, plots, metadata, False, f"sod_discrete{run}")
+
+
 
 def plot(startDate, endDate, plots, metadata, continuous, filename, year_groups = None): # plots and metadata are lists
     plt.close('all')  # Close all existing figures
@@ -605,6 +611,60 @@ def plot(startDate, endDate, plots, metadata, continuous, filename, year_groups 
     plt.savefig(filepath)
 
     plt.show()
+
+def plot_fullscreen(startDate, endDate, plots, metadata, continuous, year_groups=None):
+    plt.close('all')  # Close all existing figures
+    
+    # Ensure the 'full_plots' folder exists
+    os.makedirs('full_plots', exist_ok=True)
+
+    for i, plot_type in enumerate(plots):
+        # Create a fullscreen plot with 16:9 aspect ratio
+        fig, ax = plt.subplots(figsize=(16, 9))
+        
+        # Set background color
+        fig.patch.set_facecolor('#9B0532')
+        ax.set_facecolor('#9B0532')
+        
+        # Generate the plot based on the type
+        if plot_type == 'counters':
+            cumulative_plot_waste(metadata[0], ax, startDate, endDate)
+        elif plot_type == 'buys':
+            cumulative_plot_buys(metadata[4], ax)
+        elif plot_type == 'counter_avg':
+            plot_counter_averages(metadata[5], ax)
+        elif plot_type == 'formclass':
+            cumulative_spec_plot_weights(metadata[0], ax, plot_type, startDate, endDate, continuous, year_groups)
+        else:
+            cumulative_spec_plot_weights(metadata[0], ax, plot_type, startDate, endDate, continuous)
+        
+        # Apply neon effect to all plot lines, using the line's assigned color
+        for line in ax.get_lines():
+            line_color = line.get_color()  # Get the current color of the line
+            rgba_color = to_rgba(line_color)
+            # Brighten each color component, clamping to 1.0
+            brighter_color = (
+                min(rgba_color[0] * 1.5, 1.0),
+                min(rgba_color[1] * 1.5, 1.0),
+                min(rgba_color[2] * 1.5, 1.0),
+                rgba_color[3]
+            )
+            line.set_linewidth(2)
+            # Apply neon-like glow effect using path effects
+            line.set_path_effects([
+                pe.Stroke(linewidth=5, foreground=brighter_color),  # Outer glow with a brightened color
+                pe.Stroke(linewidth=3, foreground=line_color),  # Inner glow with the original line color
+                pe.Normal()
+            ])
+        
+        # Save each plot individually with the plot type name and timestamp
+        filename = f'full_plots/{plot_type}.png'
+        
+        plt.savefig(filename, bbox_inches='tight')  # Save the figure with tight bounding box
+        plt.close(fig)  # Close the figure to free up memory
+
+    print("All plots have been saved in the 'full_plots' folder.")
+
 
 if __name__ == "__main__":
     

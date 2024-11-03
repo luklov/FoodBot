@@ -1,7 +1,7 @@
 import os
 import re
 from datetime import datetime
-from main import convert_api_id, make_conversion_dicts
+from main import convert_api_id, load_conversion_dicts
 import pandas as pd
 
 # Function to convert date string from "Month Day" to "YYYY-MM-DD"
@@ -46,7 +46,7 @@ def rename_files(folder_path):
 
     print("Renaming completed.")
 
-def convert_ids_in_excel(file_path, sheet_name):
+def convert_ids_in_excel(writer, file_path, sheet_name):
     # Load the Excel file
     xls = pd.ExcelFile(file_path)
 
@@ -57,19 +57,38 @@ def convert_ids_in_excel(file_path, sheet_name):
 
         # Check if the "会员编号" column exists
         if "会员编号" in df.columns:
+            no_matches = 0
             # Replace the values in the "会员编号" column
             for i in range(len(df["会员编号"])):
-                converted_id = convert_api_id(df.loc[i, "会员编号"])
-                df.loc[i, "会员编号"] = converted_id if converted_id else 'No Match'
+                api_id = df.loc[i, "会员编号"]
+                if api_id is not None:
+                    converted_id = convert_api_id(reverse_conversion_dict, api_id)
+                    if converted_id:
+                        df.loc[i, "会员编号"] = converted_id
+                    else:
+                        df.loc[i, "会员编号"] = 'No Match'
+                        no_matches += 1
+                else:
+                    print(f"Warning: api_id is None for index {i}")
 
-            # Write the modified DataFrame back to the Excel file
-            with pd.ExcelWriter(file_path, engine='openpyxl', mode='a', if_sheet_exists='replace') as writer:
-                df.to_excel(writer, sheet_name=sheet_name, index=False)
+            print(f"No matches / total IDs: {no_matches} / {len(df['会员编号'])}")
+
+            # Extract the original file name without extension
+            original_file_name = os.path.splitext(file_path)[0]
+
+            # Create a new file name by appending "_new" to the original file name
+            new_file_name = original_file_name + "_new.xlsx"
+            
+            # Write the modified DataFrame to the Excel file
+            df.to_excel(writer, sheet_name=sheet_name, index=False)
         else:
             print(f"Sheet '{sheet_name}' does not contain '会员编号' column.")
     else:
         print(f"Sheet '{sheet_name}' does not exist in the Excel file.")
 
 #rename_files("data")
-make_conversion_dicts()
-convert_ids_in_excel("data/餐线消费数据-June.xlsx", "Jun 19")
+conversion_dict, reverse_conversion_dict = load_conversion_dicts()
+
+with pd.ExcelWriter("data/餐线消费数据-Sep_new.xlsx", engine='openpyxl') as writer:
+    for i in range(1, 32):
+        convert_ids_in_excel(writer, f"data/餐线消费数据-Sep.xlsx", f"Sep {i}")
