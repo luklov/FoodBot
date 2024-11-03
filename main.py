@@ -186,10 +186,10 @@ def merge_data(station_data, weight_data, member_info, conversion_dict, reverse_
                     continue
                 api_id = convert_cnt_id(conversion_dict, cnt_id)  # short to long ID
                 if not api_id:  # Skip the person if the ID cannot be converted
-                    statCount += 1
+                    statNF += 1
                     continue
                 api_id = int(api_id)
-                found1 += 1
+                statF += 1
 
                 if cnt_id not in all_data: # Initializes ID key if it doesn't exist
                     all_data[cnt_id] = {}
@@ -213,7 +213,7 @@ def merge_data(station_data, weight_data, member_info, conversion_dict, reverse_
                 cnt_id = convert_api_id(reverse_conversion_dict, api_id)
                 api_id = int(api_id)
                 if not cnt_id:  # Skip the person if the ID cannot be converted
-                    weightCount += 1
+                    weightNF += 1
                     continue
                 weightF += 1
                 if cnt_id not in all_data: # Initializes ID key if it doesn't exist
@@ -231,9 +231,9 @@ def merge_data(station_data, weight_data, member_info, conversion_dict, reverse_
                     all_data[cnt_id]['formclass'] = member_info[api_id]['formclass']
 
         currentDate += timedelta(days=1)  # Move to the next day
-    print(f"{goodcount}/{goodcount + counter} members have info.")
-    print(f"1: Found {found1} IDs and {statCount} IDs were not found in the conversion table.")
-    print(f"2: Found {found2} IDs and {weightCount} IDs were not found in the conversion table.")
+    print(f"{memF}/{memF + memNF} members have info.")
+    print(f"1: Found {statF} IDs and {statNF} IDs were not found in the conversion table.")
+    print(f"2: Found {weightF} IDs and {weightNF} IDs were not found in the conversion table.")
 
     # Save the dictionary to a JSON file
     with open('combined_data/merged_data.json', 'w') as f:
