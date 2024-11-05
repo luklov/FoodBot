@@ -1,6 +1,7 @@
 import pandas as pd
 import requests
 import collections
+from collections import defaultdict
 
 import seaborn as sns
 import matplotlib.pyplot as plt
@@ -19,7 +20,7 @@ font = FontProperties(fname="/System/Library/Fonts/PingFang.ttc")
 directory = 'data'
 prefix = '餐线消费数据-'
 
-dataFilename = 'merged_data.json' #merged_data.json
+dataFilename = 'combined_data/new_merged_data.json' #merged_data.json
 
 # Set Seaborn theme with the red background and appropriate axis styling
 sns.set_theme(style="darkgrid", rc={"axes.facecolor": "#9B0532", "figure.facecolor": "#9B0532", "grid.color": "gray", "axes.edgecolor": "lightgray"})
@@ -75,7 +76,7 @@ def getDate():
     # Return the current date
     return datetime.now().strftime('%Y-%m-%d')
 
-def load_data(file_path = 'combined_data/merged_data.json'):
+def load_data(file_path = dataFilename):
     with open(file_path, 'r') as f:
         all_data = json.load(f)
     return all_data
@@ -152,28 +153,28 @@ def getAllStations():
 
 def report(startDate, endDate):
 
-    station_data = getAllStations() # puts station data in dict
+    #station_data = getAllStations() # puts station data in dict
+    station_data = {}
+
     weight_data, member_info = getWeightsbyDate(startDate, endDate) # puts weights in dict
 
-    if not station_data: 
+    '''if not station_data: 
         print("No station data found for the given date range.")
-        return
+        return'''
     if not weight_data:
         print("No weight data found for the given date range.")
         return
 
     #print(f"Station Data: {station_data}")
-    #print(f"Weight Data: {weight_data}")›
-    conversion_dict, reverse_conversion_dict = load_conversion_dicts()
-    all_data = merge_data(station_data, weight_data, member_info, conversion_dict, reverse_conversion_dict, startDate, endDate)
+    #print(f"Weight Data: {weight_data}")
+
+    all_data = merge_data(station_data, weight_data, member_info, startDate, endDate)
 
     return all_data
 
-def merge_data(station_data, weight_data, member_info, conversion_dict, reverse_conversion_dict, startDate, endDate):
+def merge_data(station_data, weight_data, member_info, startDate, endDate):
     global dataFilename
     all_data = {} # Initializing dict to store merged data
-    statF, weightF = 0, 0 # Counters for IDs found in the conversion table
-    statNF, weightNF = 0, 0 # Counters for IDs not found in the conversion table
     memF, memNF = 0, 0 # Counters for members with and without info
 
     currentDate = startDate
@@ -186,14 +187,8 @@ def merge_data(station_data, weight_data, member_info, conversion_dict, reverse_
             pos_name = df['POS机名称']  # Get list of POS names on each day
 
             for i, cnt_id in enumerate(member_id):
-                if cnt_id == 'No Match':  # Skip if ID not convertable
-                    continue
-                api_id = convert_cnt_id(conversion_dict, cnt_id)  # short to long ID
-                if not api_id:  # Skip the person if the ID cannot be converted
-                    statNF += 1
-                    continue
-                api_id = int(api_id)
-                statF += 1
+                
+                cnt_id = int(cnt_id)
 
                 if cnt_id not in all_data: # Initializes ID key if it doesn't exist
                     all_data[cnt_id] = {}
@@ -202,45 +197,32 @@ def merge_data(station_data, weight_data, member_info, conversion_dict, reverse_
 
                 all_data[cnt_id][day]['stations'].append(pos_name[i]) # Adds station name data to the dictionary
                 if 'name' not in all_data[cnt_id]: # If member info not already in the dictionary
-                    if api_id not in member_info: # Skip if member info not found
-                        memNF += 1
-                        continue
-                    memF += 1
-                    all_data[cnt_id]['name'] = member_info[api_id]['peopleName'] # Adds member info to the dictionary
-                    all_data[cnt_id]['house'] = member_info[api_id]['house']
-                    all_data[cnt_id]['yeargroup'] = member_info[api_id]['yeargroup']
-                    all_data[cnt_id]['formclass'] = member_info[api_id]['formclass']
+                    all_data[cnt_id]['name'] = member_info[cnt_id]['peopleName'] # Adds member info to the dictionary
+                    all_data[cnt_id]['house'] = member_info[cnt_id]['house']
+                    all_data[cnt_id]['yeargroup'] = member_info[cnt_id]['yeargroup']
+                    all_data[cnt_id]['formclass'] = member_info[cnt_id]['formclass']
 
         # Process weight_data for the current day
         if day in weight_data: # Weight data present for that day
             for api_id, weight_info in weight_data[day].items():
-                cnt_id = convert_api_id(reverse_conversion_dict, api_id)
                 api_id = int(api_id)
-                if not cnt_id:  # Skip the person if the ID cannot be converted
-                    weightNF += 1
-                    continue
-                weightF += 1
-                if cnt_id not in all_data: # Initializes ID key if it doesn't exist
-                    all_data[cnt_id] = {}
-                if day not in all_data[cnt_id]: # Then initializes day key for that ID if it doesn't exist
-                    all_data[cnt_id][day] = {'stations': [], 'weights': []}
+                if api_id not in all_data: # Initializes ID key if it doesn't exist
+                    all_data[api_id] = {}
+                if day not in all_data[api_id]: # Then initializes day key for that ID if it doesn't exist
+                    all_data[api_id][day] = {'stations': [], 'weights': []}
 
                 for weight in weight_info['weights']: # Adds weight data to the dictionary
-                    all_data[cnt_id][day]['weights'].append(weight)
-                if 'name' not in all_data[cnt_id]: # If member info not already in the dictionary
-                    memF += 1
-                    all_data[cnt_id]['name'] = member_info[api_id]['peopleName'] # Adds member info to the dictionary
-                    all_data[cnt_id]['house'] = member_info[api_id]['house']
-                    all_data[cnt_id]['yeargroup'] = member_info[api_id]['yeargroup']
-                    all_data[cnt_id]['formclass'] = member_info[api_id]['formclass']
+                    all_data[api_id][day]['weights'].append(weight)
+                if 'name' not in all_data[api_id]: # If member info not already in the dictionary
+                    all_data[api_id]['name'] = member_info[api_id]['peopleName'] # Adds member info to the dictionary
+                    all_data[api_id]['house'] = member_info[api_id]['house']
+                    all_data[api_id]['yeargroup'] = member_info[api_id]['yeargroup']
+                    all_data[api_id]['formclass'] = member_info[api_id]['formclass']
 
         currentDate += timedelta(days=1)  # Move to the next day
-    print(f"{memF}/{memF + memNF} members have info.")
-    print(f"1: Found {statF} IDs and {statNF} IDs were not found in the conversion table.")
-    print(f"2: Found {weightF} IDs and {weightNF} IDs were not found in the conversion table.")
-
+    
     # Save the dictionary to a JSON file
-    with open('combined_data/merged_data.json', 'w') as f:
+    with open(dataFilename, 'w') as f:
         json.dump(all_data, f, default=set_default)
 
     return all_data
@@ -415,7 +397,7 @@ def plot_counter_averages(daily_counter_wastage, ax):
     ax.set_xlabel('Counter', fontsize=12, color="white")
     ax.set_ylabel('Average Wastage (grams)', fontsize=12, color="white")
 
-def cumulative_spec_plot_weights(all_data, ax, ospec, start_date=None, end_date=None, continuous=False, year_groups=None):
+def spec_plot_weights(all_data, ax, ospec, start_date, end_date, cumulative, year_groups):
     house_colors = {
         'Owens': '#FFA500',      # Bright Orange
         'Soong': '#FF0000',      # Bright Red for Soong
@@ -423,7 +405,14 @@ def cumulative_spec_plot_weights(all_data, ax, ospec, start_date=None, end_date=
         'Johnson': '#1E90FF',    # Bright Blue
         'Wodehouse': '#32CD32'   # Lime Green
     }
+    
+    # Define primary colors for non-house categories
+    primary_colors = ['#FF5733', '#33FF57', '#3357FF', '#FF33A5', '#FFC300', '#33FFF9', '#C70039', '#900C3F', '#581845', '#2ECC71']
+
     spec_wastage = {}
+    member_count = {}  # To count members contributing to each day's average
+
+    # Prepare data by member specification
     for member, member_data in all_data.items():
         member_spec = member_data.get(ospec)
         if not member_spec:
@@ -432,6 +421,8 @@ def cumulative_spec_plot_weights(all_data, ax, ospec, start_date=None, end_date=
             continue
         if member_spec not in spec_wastage:
             spec_wastage[member_spec] = {}
+            member_count[member_spec] = {}
+        
         for day, day_data in member_data.items():
             if day in ['name', 'house', 'yeargroup', 'formclass']:
                 continue
@@ -443,29 +434,138 @@ def cumulative_spec_plot_weights(all_data, ax, ospec, start_date=None, end_date=
                 total_weight = sum(day_data['weights'])
                 if day not in spec_wastage[member_spec]:
                     spec_wastage[member_spec][day] = 0
+                    member_count[member_spec][day] = 0
                 spec_wastage[member_spec][day] += total_weight
+                member_count[member_spec][day] += 1
 
-    cumulative_spec_wastage = {}
-    all_dates = sorted([date for spec_data in spec_wastage.values() for date in spec_data])
+    all_dates = sorted({date for spec_data in spec_wastage.values() for date in spec_data})
+
+    # Calculate and plot cumulative or daily average values based on the `cumulative` flag
+    color_index = 0  # To iterate over primary colors if not house
     for spec, daily_wastage in spec_wastage.items():
-        cumulative_spec_wastage[spec] = {}
+        cumulative_spec_wastage = {}
         cumulative_total = 0
-        for date in all_dates:
-            daily_wastage.setdefault(date, 0)
-            cumulative_total += daily_wastage[date]
-            cumulative_spec_wastage[spec][date] = cumulative_total
+        averaged_daily_wastage = []
 
-        sorted_wastage = [cumulative_spec_wastage[spec][date] for date in all_dates]
-        if ospec == 'house' and spec in house_colors:
-            sns.lineplot(x=all_dates, y=sorted_wastage, ax=ax, label=spec, color=house_colors[spec])
+        if cumulative:
+            # Compute cumulative wastage
+            for date in all_dates:
+                daily_wastage.setdefault(date, 0)
+                cumulative_total += daily_wastage[date]
+                cumulative_spec_wastage[date] = cumulative_total
+            sorted_wastage = [cumulative_spec_wastage[date] for date in all_dates]
+            label_text = f"{spec}"
         else:
-            sns.lineplot(x=all_dates, y=sorted_wastage, ax=ax, label=spec)
+            # Compute daily average wastage per member
+            for date in all_dates:
+                if date in daily_wastage and member_count[spec].get(date, 0) > 0:
+                    avg_wastage = daily_wastage[date] / member_count[spec][date]
+                else:
+                    avg_wastage = 0
+                averaged_daily_wastage.append(avg_wastage)
+            sorted_wastage = averaged_daily_wastage
+            label_text = f"{spec}"
 
-    ax.set_title(f'Cumulative Wastage Over Time by {ospec}', fontsize=16, color="white")
+        # Choose color based on ospec
+        if ospec == 'house' and spec in house_colors:
+            color = house_colors[spec]
+        else:
+            color = primary_colors[color_index % len(primary_colors)]
+            color_index += 1
+
+        # Plot
+        sns.lineplot(x=all_dates, y=sorted_wastage, ax=ax, label=label_text, color=color)
+
+    # Set labels and legend
+    title_type = "Cumulative" if cumulative else "Daily Average Per Member"
+    ax.set_title(f'{title_type} Wastage Over Time by {ospec}', fontsize=16, color="white")
     ax.set_xlabel('Date', fontsize=12, color="white")
-    ax.set_ylabel('Total Wastage (grams)', fontsize=12, color="white")
-    ax.legend(loc='upper left', fontsize=10)
+    ax.set_ylabel('Wastage (grams)', fontsize=12, color="white")
 
+    # Apply consistent legend styling
+    handles, labels = ax.get_legend_handles_labels()
+    if ospec == "yeargroup":
+        sorted_legend = sorted(zip(labels, handles), key=lambda x: int(x[0]))
+        labels, handles = zip(*sorted_legend)
+    legend = ax.legend(handles, labels, loc='upper left', fontsize=14, frameon=True, facecolor='#333333', edgecolor='white')
+    legend.set_title("Legend", prop={'size': 16, 'weight': 'bold'})
+    legend.get_title().set_color("white")
+    for text in legend.get_texts():
+        text.set_color("white")
+
+
+def plot_spec_average_wastage(all_data, ax, ospec, start_date, end_date, year_groups):
+    house_colors = {
+        'Owens': '#FFA500',      # Bright Orange
+        'Soong': '#FF0000',      # Bright Red for Soong
+        'Alleyn': '#9B30FF',     # Brightened Purple for Alleyn
+        'Johnson': '#1E90FF',    # Bright Blue
+        'Wodehouse': '#32CD32'   # Lime Green
+    }
+    
+    # Define primary colors for non-house categories
+    primary_colors = ['#FF5733', '#33FF57', '#3357FF', '#FF33A5', '#FFC300', '#33FFF9', '#FF5733', 
+                      '#C70039', '#900C3F', '#581845', '#FFD700', '#8A2BE2', '#7FFF00', '#D2691E', 
+                      '#FF7F50', '#6495ED', '#DC143C', '#00FFFF']
+    
+    total_wastage = defaultdict(float)
+    active_days = defaultdict(int)
+
+    # Prepare data by member specification
+    for member, member_data in all_data.items():
+        member_spec = member_data.get(ospec)
+        if not member_spec:
+            continue
+        if ospec == 'formclass' and member_data.get('yeargroup') not in year_groups:
+            continue
+
+        for day, day_data in member_data.items():
+            if day in ['name', 'house', 'yeargroup', 'formclass']:
+                continue
+            day_date = datetime.strptime(day, "%Y-%m-%d").date()
+            if day_date < start_date or day_date > end_date:
+                continue
+            
+            has_weights = 'weights' in day_data and day_data['weights']
+            if has_weights:
+                total_weight = sum(day_data['weights'])
+                total_wastage[member_spec] += total_weight
+                active_days[member_spec] += 1  # Count each day with data
+
+    # Calculate daily average wastage per specification
+    avg_wastage_per_day = {
+        spec: total_wastage[spec] / active_days[spec] if active_days[spec] else 0
+        for spec in total_wastage
+    }
+
+    # Sort specifications numerically if 'yeargroup' is specified
+    if ospec == 'yeargroup':
+        sorted_avg_wastage = sorted(avg_wastage_per_day.items(), key=lambda x: int(x[0]))
+        specs, avg_wastages = zip(*sorted_avg_wastage)
+    else:
+        specs = list(avg_wastage_per_day.keys())
+        avg_wastages = list(avg_wastage_per_day.values())
+
+    # Choose colors based on ospec
+    if ospec == 'house':
+        colors = [house_colors.get(spec, "#4B0082") for spec in specs]  # Default to indigo if color not in house_colors
+    else:
+        colors = primary_colors[:len(specs)]  # Use primary colors if not 'house'
+
+    # Plotting
+    sns.barplot(x=specs, y=avg_wastages, ax=ax, palette=colors)
+    ax.set_title(f'Daily Average Wastage per Member by {ospec}', fontsize=16, color="white")
+    ax.set_xlabel(ospec.title(), fontsize=12, color="white")
+    ax.set_ylabel('Average Daily Wastage (grams)', fontsize=12, color="white")
+
+    # Adjust colors and styling for readability
+    ax.tick_params(axis='x', colors='white', labelsize=12, rotation=45)
+    ax.tick_params(axis='y', colors='white', labelsize=12)
+    for spine in ax.spines.values():
+        spine.set_edgecolor('white')
+    ax.yaxis.label.set_color('white')
+    ax.xaxis.label.set_color('white')
+    ax.title.set_color('white')
 
 def set_default(obj):
     if isinstance(obj, set):
@@ -513,9 +613,9 @@ def plot(startDate, endDate, plots, metadata, continuous, filename, year_groups 
         elif plots[i] == 'counter_avg':
             plot_counter_averages(metadata[5], ax) # daily_average_wastage, date limited
         elif plots[i] == 'formclass':
-            cumulative_spec_plot_weights(metadata[0], ax, plots[i], startDate, endDate, continuous, year_groups) # all_data
+            spec_plot_weights(metadata[0], ax, plots[i], startDate, endDate, True, year_groups) # all_data
         else:
-            cumulative_spec_plot_weights(metadata[0], ax, plots[i], startDate, endDate, continuous) # all_data
+            spec_plot_weights(metadata[0], ax, plots[i], startDate, endDate, True) # all_data
 
     # Ensure the 'plots' folder exists
     os.makedirs('plots', exist_ok=True)
@@ -528,7 +628,7 @@ def plot(startDate, endDate, plots, metadata, continuous, filename, year_groups 
 
     plt.show()
 
-def plot_fullscreen(startDate, endDate, plots, metadata, continuous, year_groups=None):
+def plot_fullscreen(startDate, endDate, plots, metadata, line, cumulative, year_groups):
     plt.close('all')  # Close all existing figures
     
     # Ensure the 'full_plots' folder exists
@@ -537,6 +637,8 @@ def plot_fullscreen(startDate, endDate, plots, metadata, continuous, year_groups
     for plot_type in plots:
         # Create a fullscreen 16:9 plot with enhanced styling
         fig, ax = plt.subplots(figsize=(16, 9))
+        plt.subplots_adjust(left=0.08, right=0.92, top=0.88, bottom=0.18)  # Increased bottom padding
+        
         x_label = "Date"
         y_label = "Value"
         
@@ -553,47 +655,70 @@ def plot_fullscreen(startDate, endDate, plots, metadata, continuous, year_groups
             plot_counter_averages(metadata[5], ax)
             x_label = "Station"
             y_label = "Food Wastage (grams)"
-        elif plot_type == 'formclass':
-            cumulative_spec_plot_weights(metadata[0], ax, plot_type, startDate, endDate, continuous, year_groups)
-            x_label = "Date"
-            y_label = "Food Wastage (grams)"
+        elif plot_type in ['formclass', 'house', 'yeargroup']:
+            if line:
+                spec_plot_weights(metadata[0], ax, plot_type, start_date=startDate, end_date=endDate, cumulative=cumulative, year_groups=year_groups)
+                x_label = "Date"
+                y_label = "Food Wastage (grams)"
+            else:
+                plot_spec_average_wastage(metadata[0], ax, plot_type, start_date=startDate, end_date=endDate, year_groups=year_groups)
+                x_label = "Team"
+                y_label = "Food Wastage (grams)"
+
+            if plot_type == 'yeargroup':
+                # Sort the legend for yeargroup numerically and apply consistent styling
+                handles, labels = ax.get_legend_handles_labels()
+                if labels:  # Check if labels exist
+                    sorted_legend = sorted(zip(labels, handles), key=lambda x: int(x[0]))
+                    labels, handles = zip(*sorted_legend)
+                    legend = ax.legend(handles, labels, loc='upper left', fontsize=14, frameon=True, facecolor='#333333', edgecolor='white')
+                    legend.set_title("Legend", prop={'size': 16, 'weight': 'bold'})
+                    legend.get_title().set_color("white")
+                    for text in legend.get_texts():
+                        text.set_color("white")
         else:
-            cumulative_spec_plot_weights(metadata[0], ax, plot_type, startDate, endDate, continuous)
-        
-        # Simulate a glow effect by layering lines with increasing opacity
-        for line in ax.get_lines():
-            line_color = line.get_color()  # Get the color of the primary line
-            rgba_color = to_rgba(line_color)
+            spec_plot_weights(metadata[0], ax, plot_type, startDate, endDate, cumulative)
 
-            # Overlay multiple lines with decreasing opacity for glow
-            for alpha, lw in zip([0.05, 0.1, 0.2, 0.3], [12, 10, 8, 6]):
-                ax.plot(line.get_xdata(), line.get_ydata(),
-                        color=(rgba_color[0], rgba_color[1], rgba_color[2], alpha),
-                        linewidth=lw, zorder=-1)
+        if line:
+            # Simulate a glow effect by layering lines with increasing opacity
+            for line in ax.get_lines():
+                line_color = line.get_color()  # Get the color of the primary line
+                rgba_color = to_rgba(line_color)
 
-        # Title and labels with enhanced styles to match the theme
-        ax.set_title(f"{plot_type.title()} Food Waste Over Time", fontsize=18, color="white", weight='bold', pad=20)
-        ax.set_xlabel(x_label, fontsize=14, color="white", labelpad=10)
-        ax.set_ylabel(y_label, fontsize=14, color="white", labelpad=10)
-        
-        # Customize tick colors to fit the theme
-        ax.tick_params(axis='x', colors='white', rotation=45)
-        ax.tick_params(axis='y', colors='white')
+                # Overlay multiple lines with decreasing opacity for glow
+                for alpha, lw in zip([0.05, 0.1, 0.2, 0.3], [12, 10, 8, 6]):
+                    ax.plot(line.get_xdata(), line.get_ydata(),
+                            color=(rgba_color[0], rgba_color[1], rgba_color[2], alpha),
+                            linewidth=lw, zorder=-1)
 
-        # Customize legend for larger size and white text
-        legend = ax.legend(loc='upper left', fontsize=12, frameon=True, facecolor='#333333', edgecolor='white')
-        
-        # Update legend title separately
-        legend.set_title("Legend", prop={'size': 14, 'weight': 'bold'})
-        legend.get_title().set_color("white")  # Set title color to white
-        
-        # Set legend text color to white
-        for text in legend.get_texts():
-            text.set_color("white")  
+        desc = 'Last Week' # Over Time
+        year = f' (Year {year_groups[0]})' if plot_type == 'formclass' else ''
+        if line:   
+            if cumulative:
+                ax.set_title(f"{plot_type.title()} Cumulative Food Waste {desc}{year}", fontsize=22, color="white", weight='bold', pad=20)
+            else:
+                ax.set_title(f"{plot_type.title()} Average Food Waste(per Person) {desc}{year}", fontsize=22, color="white", weight='bold', pad=20)
+        else:
+            ax.set_title(f"{plot_type.title()} Average Food Waste {desc}{year}", fontsize=22, color="white", weight='bold', pad=20)
 
+        ax.set_xlabel(x_label, fontsize=18, color="white", labelpad=15)
+        ax.set_ylabel(y_label, fontsize=18, color="white", labelpad=15)
+        
+        # Customize tick colors and font sizes to fit the theme
+        ax.tick_params(axis='x', colors='white', rotation=45, labelsize=14)
+        ax.tick_params(axis='y', colors='white', labelsize=14)
+
+        # Customize legend for larger size and white text if not already done
+        if plot_type != 'yeargroup' and ax.get_legend():
+            legend = ax.legend(loc='upper left', fontsize=14, frameon=True, facecolor='#333333', edgecolor='white')
+            legend.set_title("Legend", prop={'size': 16, 'weight': 'bold'})
+            legend.get_title().set_color("white")
+            for text in legend.get_texts():
+                text.set_color("white")
+        
         # Save each plot individually with the plot type name
-        filename = f'full_plots/{plot_type}.png'
-        plt.savefig(filename, bbox_inches='tight', dpi=300)  # High resolution for display quality
+        filename = f'full_plots/{plot_type}{year_groups[0] if plot_type == 'formclass' else ''}_{"line" if line else "bar"}_{"cumulative" if cumulative and line else "average"}.png'
+        plt.savefig(filename, dpi=300)  # High resolution for display quality
         plt.close(fig)  # Close figure to free up memory
 
     print("All plots have been saved in the 'full_plots' folder.")
@@ -631,13 +756,23 @@ def test(startDateStr, endDateStr):
     '''
 
     #plots = ['counters', 'yeargroup', 'house', 'formclass', 'buys', 'counter_avg']
-    plots = ['house']
-    year_groups = ['12']
+    plots = ['yeargroup', 'house']
+    year_groups = ['9', '10', '11', '12', '13']
 
-    plot_fullscreen(startDate, endDate, plots, metadata, False, year_groups)
+    plot_fullscreen(startDate, endDate, plots, metadata, True, True, year_groups) # Line? Cumulative? 
+    plot_fullscreen(startDate, endDate, plots, metadata, True, False, year_groups)
+    plot_fullscreen(startDate, endDate, plots, metadata, False, False, year_groups)
+
+    plots = ['formclass']
+    
+    for year_group in year_groups:
+        year_list = [year_group]
+        plot_fullscreen(startDate, endDate, plots, metadata, True, False, year_list)
+        plot_fullscreen(startDate, endDate, plots, metadata, True, True, year_list)
+        plot_fullscreen(startDate, endDate, plots, metadata, False, False, year_list)
+
 if __name__ == "__main__":
     
-
-    test("2024-05-13", "2024-06-19")
+    test("2024-10-28", "2024-11-01")
     #getWeightsbyDate(datetime.strptime("2024-05-13", '%Y-%m-%d'), datetime.strptime("2024-05-15", '%Y-%m-%d'))
     #print(weight_data)
