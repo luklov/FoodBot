@@ -151,14 +151,16 @@ def getAllStations():
             station_data = getStation(station_data, filename.replace('.xlsx', '').replace('餐线消费数据-', ''))
     return station_data
 
-def report(startDate, endDate):
+def report():
 
     #station_data = getAllStations() # puts station data in dict
     station_data = {}
 
-    weight_data, member_info = getWeightsbyDate(startDate, endDate) # puts weights in dict
+    initDate = datetime.strptime("2024-05-13", '%Y-%m-%d')
+    currentDate = datetime.today()
+    weight_data, member_info = getWeightsbyDate(initDate, currentDate) # puts weights in dict
 
-    '''if not station_data: 
+    '''if not station_data:
         print("No station data found for the given date range.")
         return'''
     if not weight_data:
@@ -168,7 +170,7 @@ def report(startDate, endDate):
     #print(f"Station Data: {station_data}")
     #print(f"Weight Data: {weight_data}")
 
-    all_data = merge_data(station_data, weight_data, member_info, startDate, endDate)
+    all_data = merge_data(station_data, weight_data, member_info, initDate, currentDate)
 
     return all_data
 
@@ -400,8 +402,8 @@ def plot_counter_averages(daily_counter_wastage, ax):
 def spec_plot_weights(all_data, ax, ospec, start_date, end_date, cumulative, year_groups):
     house_colors = {
         'Owens': '#FFA500',      # Bright Orange
-        'Soong': '#FF0000',      # Bright Red for Soong
-        'Alleyn': '#9B30FF',     # Brightened Purple for Alleyn
+        'Soong': '#FF0000',      # Bright Red
+        'Alleyn': '#9B30FF',     # Bright Purple
         'Johnson': '#1E90FF',    # Bright Blue
         'Wodehouse': '#32CD32'   # Lime Green
     }
@@ -422,7 +424,7 @@ def spec_plot_weights(all_data, ax, ospec, start_date, end_date, cumulative, yea
         if member_spec not in spec_wastage:
             spec_wastage[member_spec] = {}
             member_count[member_spec] = {}
-        
+
         for day, day_data in member_data.items():
             if day in ['name', 'house', 'yeargroup', 'formclass']:
                 continue
@@ -438,10 +440,20 @@ def spec_plot_weights(all_data, ax, ospec, start_date, end_date, cumulative, yea
                 spec_wastage[member_spec][day] += total_weight
                 member_count[member_spec][day] += 1
 
+    # Extract all dates within the range that have data
     all_dates = sorted({date for spec_data in spec_wastage.values() for date in spec_data})
 
+    # Debugging output to check for collected data
+    print(f"Dates for plotting: {all_dates}")
+    print(f"Collected spec_wastage: {spec_wastage}")
+
+    # Ensure all_dates has at least one date, or return early if empty
+    if not all_dates:
+        print(f"No data available for the specified date range ({start_date} to {end_date}).")
+        return
+
     # Calculate and plot cumulative or daily average values based on the `cumulative` flag
-    color_index = 0  # To iterate over primary colors if not house
+    color_index = 0  # To alternate colors for non-house specs
     for spec, daily_wastage in spec_wastage.items():
         cumulative_spec_wastage = {}
         cumulative_total = 0
@@ -454,7 +466,6 @@ def spec_plot_weights(all_data, ax, ospec, start_date, end_date, cumulative, yea
                 cumulative_total += daily_wastage[date]
                 cumulative_spec_wastage[date] = cumulative_total
             sorted_wastage = [cumulative_spec_wastage[date] for date in all_dates]
-            label_text = f"{spec}"
         else:
             # Compute daily average wastage per member
             for date in all_dates:
@@ -464,7 +475,9 @@ def spec_plot_weights(all_data, ax, ospec, start_date, end_date, cumulative, yea
                     avg_wastage = 0
                 averaged_daily_wastage.append(avg_wastage)
             sorted_wastage = averaged_daily_wastage
-            label_text = f"{spec}"
+
+        # Debugging output for calculated wastage
+        print(f"Spec: {spec}, Wastage Values: {sorted_wastage}")
 
         # Choose color based on ospec
         if ospec == 'house' and spec in house_colors:
@@ -474,7 +487,7 @@ def spec_plot_weights(all_data, ax, ospec, start_date, end_date, cumulative, yea
             color_index += 1
 
         # Plot
-        sns.lineplot(x=all_dates, y=sorted_wastage, ax=ax, label=label_text, color=color)
+        sns.lineplot(x=all_dates, y=sorted_wastage, ax=ax, label=spec, color=color)
 
     # Set labels and legend
     title_type = "Cumulative" if cumulative else "Daily Average Per Member"
@@ -484,15 +497,15 @@ def spec_plot_weights(all_data, ax, ospec, start_date, end_date, cumulative, yea
 
     # Apply consistent legend styling
     handles, labels = ax.get_legend_handles_labels()
-    if ospec == "yeargroup":
-        sorted_legend = sorted(zip(labels, handles), key=lambda x: int(x[0]))
-        labels, handles = zip(*sorted_legend)
-    legend = ax.legend(handles, labels, loc='upper left', fontsize=14, frameon=True, facecolor='#333333', edgecolor='white')
-    legend.set_title("Legend", prop={'size': 16, 'weight': 'bold'})
-    legend.get_title().set_color("white")
-    for text in legend.get_texts():
-        text.set_color("white")
-
+    if handles and labels:
+        if ospec == "yeargroup":
+            sorted_legend = sorted(zip(labels, handles), key=lambda x: int(x[0]))
+            labels, handles = zip(*sorted_legend)
+        legend = ax.legend(handles, labels, loc='upper left', fontsize=14, frameon=True, facecolor='#333333', edgecolor='white')
+        legend.set_title("Legend", prop={'size': 16, 'weight': 'bold'})
+        legend.get_title().set_color("white")
+        for text in legend.get_texts():
+            text.set_color("white")
 
 def plot_spec_average_wastage(all_data, ax, ospec, start_date, end_date, year_groups):
     house_colors = {
@@ -539,12 +552,17 @@ def plot_spec_average_wastage(all_data, ax, ospec, start_date, end_date, year_gr
     }
 
     # Sort specifications numerically if 'yeargroup' is specified
-    if ospec == 'yeargroup':
+    if ospec == 'yeargroup' and avg_wastage_per_day:
         sorted_avg_wastage = sorted(avg_wastage_per_day.items(), key=lambda x: int(x[0]))
         specs, avg_wastages = zip(*sorted_avg_wastage)
     else:
         specs = list(avg_wastage_per_day.keys())
         avg_wastages = list(avg_wastage_per_day.values())
+
+    # Ensure there is data to plot
+    if not specs or not avg_wastages:
+        print(f"No data to plot for {ospec} in the specified date range.")
+        return  # Exit the function if there is no data
 
     # Choose colors based on ospec
     if ospec == 'house':
@@ -727,7 +745,7 @@ def test(startDateStr, endDateStr):
     #current_date = getDate()
     startDate = datetime.strptime(startDateStr, '%Y-%m-%d').date()
     endDate = datetime.strptime(endDateStr, '%Y-%m-%d').date()
-    #all_data = report(startDate, endDate) # Start date, end date
+    #all_data = report()
     all_data = load_data() # Load data from JSON file
     
     categories, both_counter_weights = categorize_data(all_data)
@@ -773,6 +791,6 @@ def test(startDateStr, endDateStr):
 
 if __name__ == "__main__":
     
-    test("2024-10-28", "2024-11-01")
+    test("2024-11-01", "2024-11-01")
     #getWeightsbyDate(datetime.strptime("2024-05-13", '%Y-%m-%d'), datetime.strptime("2024-05-15", '%Y-%m-%d'))
     #print(weight_data)
