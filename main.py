@@ -126,6 +126,49 @@ def getWeightsbyDate(startDate, endDate):
 
     return weight_data, member_info
 
+def ALTgetWeightsbyDate(startDate, endDate):
+    weight_data = {} # Initialize dictionary to store weight data
+    member_info = {}
+
+    startDateForm = startDate.strftime('%Y-%m-%d') # Convert the date objects to strings
+    endDateForm = endDate.strftime('%Y-%m-%d')
+
+    try:
+        with open('1106data.json', 'r') as file:
+            api_data = json.load(file) # Load data from the JSON file
+    except json.JSONDecodeError: # Handle JSON decoding errors
+        print(f"Error: Unable to decode JSON data from file.")
+        api_data = []
+    except FileNotFoundError: # Handle file not found error
+        print(f"Error: File '1106data.json' not found.")
+        api_data = []
+    except Exception as e: # Handle other exceptions
+        print(f"Error: {e}")
+        api_data = []
+
+    # Store API data into the global dictionary
+    for data in api_data: # Iterate over the data from the JSON file
+        peopleCard = data.get('peopleCard') # Gets card ID of the person
+        cardNum = peopleCard.lstrip('0') # Removes leading zeros from the card ID
+        day = data.get('addTime').split(' ')[0] # Gets the date from the 'addTime' field
+        if day not in weight_data: # If the date is not in the dictionary, add it
+            weight_data[day] = {}
+        if cardNum not in weight_data[day]: # If the card ID is not in the weights dictionary, add it
+            weight_data[day][cardNum] = {
+                'weights': []
+            }
+        cardInt = int(cardNum)
+        if cardInt not in member_info: # If the card ID is not in the member info dictionary, add it
+            member_info[cardInt] = {
+                'peopleName': data.get('peopleName'),
+                'house': data.get('house'),
+                'yeargroup': data.get('yeargroup'),
+                'formclass': data.get('formclass')
+            }
+        weight_data[day][cardNum]['weights'].append(data['weight']) # Add the weight to the dictionary
+
+    return weight_data, member_info
+
 def getStation(station_data, filename):
 
     file_path = os.path.join(directory, f'{prefix}{filename}.xlsx')
@@ -571,10 +614,14 @@ def plot_spec_average_wastage(all_data, ax, ospec, start_date, end_date, year_gr
         colors = primary_colors[:len(specs)]  # Use primary colors if not 'house'
 
     # Plotting
-    sns.barplot(x=specs, y=avg_wastages, ax=ax, palette=colors)
+    bars = sns.barplot(x=specs, y=avg_wastages, ax=ax, palette=colors)
     ax.set_title(f'Daily Average Wastage per Member by {ospec}', fontsize=16, color="white")
     ax.set_xlabel(ospec.title(), fontsize=12, color="white")
     ax.set_ylabel('Average Daily Wastage (grams)', fontsize=12, color="white")
+
+    # Remove bar borders by setting edge color to face color
+    for bar, color in zip(bars.patches, colors):
+        bar.set_edgecolor(color)
 
     # Adjust colors and styling for readability
     ax.tick_params(axis='x', colors='white', labelsize=12, rotation=45)
@@ -709,7 +756,7 @@ def plot_fullscreen(startDate, endDate, plots, metadata, line, cumulative, year_
                             color=(rgba_color[0], rgba_color[1], rgba_color[2], alpha),
                             linewidth=lw, zorder=-1)
 
-        desc = 'Last Week' # Over Time
+        desc = 'Last Wednesday' # Over Time
         year = f' (Year {year_groups[0]})' if plot_type == 'formclass' else ''
         if line:   
             if cumulative:
@@ -745,8 +792,8 @@ def test(startDateStr, endDateStr):
     #current_date = getDate()
     startDate = datetime.strptime(startDateStr, '%Y-%m-%d').date()
     endDate = datetime.strptime(endDateStr, '%Y-%m-%d').date()
-    #all_data = report()
-    all_data = load_data() # Load data from JSON file
+    all_data = report()
+    #all_data = load_data() # Load data from JSON file
     
     categories, both_counter_weights = categorize_data(all_data)
     for category, count in categories.items():
@@ -791,6 +838,6 @@ def test(startDateStr, endDateStr):
 
 if __name__ == "__main__":
     
-    test("2024-11-01", "2024-11-01")
+    test("2024-11-11", "2024-11-12")
     #getWeightsbyDate(datetime.strptime("2024-05-13", '%Y-%m-%d'), datetime.strptime("2024-05-15", '%Y-%m-%d'))
     #print(weight_data)
