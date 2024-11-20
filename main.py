@@ -17,7 +17,7 @@ from matplotlib.font_manager import FontProperties
 
 font = FontProperties(fname="/System/Library/Fonts/PingFang.ttc")
 
-directory = 'data'
+directory = 'activeData'
 prefix = '餐线消费数据-'
 
 dataFilename = 'combined_data/new_merged_data.json' #merged_data.json
@@ -44,18 +44,6 @@ def make_conversion_dicts():
         json.dump(reverse_conversion_dict, f)
 
     return conversion_dict, reverse_conversion_dict
-
-def convert_cnt_id(conversion_dict, cnt_id): # short ID to long ID
-    cnt_id = str(cnt_id) # int to string
-    api_id = conversion_dict.get(str(cnt_id), None)
-
-    return api_id
-
-def convert_api_id(reverse_conversion_dict, api_id): # long ID to short ID, REVERSE
-    api_id = str(int(api_id)) # float to int to string
-    cnt_id = reverse_conversion_dict.get(api_id, None)
-
-    return cnt_id
 
 def load_conversion_dicts():
     if not os.path.exists('conversion_dict'):
@@ -120,13 +108,14 @@ def getWeightsbyDate(startDate, endDate):
                 'peopleName': data.get('peopleName'),
                 'house': data.get('house'),
                 'yeargroup': data.get('yeargroup'),
-                'formclass': data.get('formclass')
+                'formclass': data.get('formclass'),
+                'balance': data.get('balance')
             }
         weight_data[day][cardNum]['weights'].append(data['weight']) # Add the weight to the dictionary
 
     return weight_data, member_info
 
-def ALTgetWeightsbyDate(startDate, endDate):
+def ALTgetWeightsbyDate(startDate, endDate): # Get weights from local JSON file
     weight_data = {} # Initialize dictionary to store weight data
     member_info = {}
 
@@ -163,7 +152,8 @@ def ALTgetWeightsbyDate(startDate, endDate):
                 'peopleName': data.get('peopleName'),
                 'house': data.get('house'),
                 'yeargroup': data.get('yeargroup'),
-                'formclass': data.get('formclass')
+                'formclass': data.get('formclass'),
+                'balance': data.get('balance')
             }
         weight_data[day][cardNum]['weights'].append(data['weight']) # Add the weight to the dictionary
 
@@ -173,7 +163,7 @@ def getStation(station_data, filename):
 
     file_path = os.path.join(directory, f'{prefix}{filename}.xlsx')
     excel_file = pd.read_excel(file_path, sheet_name=None)  # Read the Excel file
-    if filename != 'June':
+    if filename not in ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec']: 
         station_data[filename] = list(excel_file.values())[0]  # Store the DataFrame in the dictionary
     else:
         for sheet_name, sheet_data in excel_file.items():
@@ -196,8 +186,8 @@ def getAllStations():
 
 def report():
 
-    #station_data = getAllStations() # puts station data in dict
-    station_data = {}
+    station_data = getAllStations() # puts station data in dict
+    #station_data = {}
 
     initDate = datetime.strptime("2024-05-13", '%Y-%m-%d')
     currentDate = datetime.today()
@@ -220,7 +210,6 @@ def report():
 def merge_data(station_data, weight_data, member_info, startDate, endDate):
     global dataFilename
     all_data = {} # Initializing dict to store merged data
-    memF, memNF = 0, 0 # Counters for members with and without info
 
     currentDate = startDate
     while currentDate <= endDate: # Iterate over the dates in between
@@ -228,41 +217,37 @@ def merge_data(station_data, weight_data, member_info, startDate, endDate):
   
         if day in station_data: # Station data present for that day
             df = station_data[day]
-            member_id = df['会员编号']  # Get list of IDs on each day
+            member_id = df['卡号']  # Get list of IDs on each day
             pos_name = df['POS机名称']  # Get list of POS names on each day
 
-            for i, cnt_id in enumerate(member_id):
+            for i, stu_id in enumerate(member_id):
                 
-                cnt_id = int(cnt_id)
+                stu_id = int(stu_id)
 
-                if cnt_id not in all_data: # Initializes ID key if it doesn't exist
-                    all_data[cnt_id] = {}
-                if day not in all_data[cnt_id]: # Then initializes day key for that ID if it doesn't exist
-                    all_data[cnt_id][day] = {'stations': [], 'weights': []}
+                if stu_id not in all_data: # Initializes ID key if it doesn't exist
+                    all_data[stu_id] = {}
+                if day not in all_data[stu_id]: # Then initializes day key for that ID if it doesn't exist
+                    all_data[stu_id][day] = {'stations': [], 'weights': []}
 
-                all_data[cnt_id][day]['stations'].append(pos_name[i]) # Adds station name data to the dictionary
-                if 'name' not in all_data[cnt_id]: # If member info not already in the dictionary
-                    all_data[cnt_id]['name'] = member_info[cnt_id]['peopleName'] # Adds member info to the dictionary
-                    all_data[cnt_id]['house'] = member_info[cnt_id]['house']
-                    all_data[cnt_id]['yeargroup'] = member_info[cnt_id]['yeargroup']
-                    all_data[cnt_id]['formclass'] = member_info[cnt_id]['formclass']
-
+                all_data[stu_id][day]['stations'].append(pos_name[i]) # Adds station name data to the dictionary
+        
         # Process weight_data for the current day
         if day in weight_data: # Weight data present for that day
-            for api_id, weight_info in weight_data[day].items():
-                api_id = int(api_id)
-                if api_id not in all_data: # Initializes ID key if it doesn't exist
-                    all_data[api_id] = {}
-                if day not in all_data[api_id]: # Then initializes day key for that ID if it doesn't exist
-                    all_data[api_id][day] = {'stations': [], 'weights': []}
+            for stu_id, weight_info in weight_data[day].items():
+                stu_id = int(stu_id)
+                if stu_id not in all_data: # Initializes ID key if it doesn't exist
+                    all_data[stu_id] = {}
+                if day not in all_data[stu_id]: # Then initializes day key for that ID if it doesn't exist
+                    all_data[stu_id][day] = {'stations': [], 'weights': []}
 
                 for weight in weight_info['weights']: # Adds weight data to the dictionary
-                    all_data[api_id][day]['weights'].append(weight)
-                if 'name' not in all_data[api_id]: # If member info not already in the dictionary
-                    all_data[api_id]['name'] = member_info[api_id]['peopleName'] # Adds member info to the dictionary
-                    all_data[api_id]['house'] = member_info[api_id]['house']
-                    all_data[api_id]['yeargroup'] = member_info[api_id]['yeargroup']
-                    all_data[api_id]['formclass'] = member_info[api_id]['formclass']
+                    all_data[stu_id][day]['weights'].append(weight)
+                if 'name' not in all_data[stu_id]: # If member info not already in the dictionary
+                    all_data[stu_id]['name'] = member_info[stu_id]['peopleName'] # Adds member info to the dictionary
+                    all_data[stu_id]['house'] = member_info[stu_id]['house']
+                    all_data[stu_id]['yeargroup'] = member_info[stu_id]['yeargroup']
+                    all_data[stu_id]['formclass'] = member_info[stu_id]['formclass']
+                    all_data[stu_id]['balance'] = member_info[stu_id]['balance']
 
         currentDate += timedelta(days=1)  # Move to the next day
     
@@ -286,7 +271,7 @@ def categorize_data(all_data):
 
     for member, member_data in all_data.items():
         for day, day_data in member_data.items():
-            if day == 'name' or day == 'house' or day == 'yeargroup' or day == 'formclass': # Skip non-day data
+            if day == 'name' or day == 'house' or day == 'yeargroup' or day == 'formclass' or day == 'balance': # Skip non-day data
                 continue
             has_weights = 'weights' in day_data and day_data['weights']
             has_counters = 'stations' in day_data and day_data['stations']
@@ -322,7 +307,7 @@ def calculate_totals_and_daily_average_wastage(all_data, startDate, endDate):
 
     for member, member_data in all_data.items(): # Iterate over the members in the data
         for day, day_data in member_data.items(): # Iterate over the days for each member
-            if day in ['name', 'house', 'yeargroup', 'formclass']:  # Skip non-day data
+            if day in ['name', 'house', 'yeargroup', 'formclass', 'balance']:  # Skip non-day data
                 continue
 
             day_date = datetime.strptime(day, "%Y-%m-%d").date() # Convert the date string to a date object
@@ -370,7 +355,7 @@ def cumulative_plot_waste(all_data, ax, startDate, endDate):
     daily_counter_wastage = {}
     for member, member_data in all_data.items():
         for day, day_data in member_data.items():
-            if day in ['name', 'house', 'yeargroup', 'formclass']:
+            if day in ['name', 'house', 'yeargroup', 'formclass', 'balance']:
                 continue
             day_date = datetime.strptime(day, "%Y-%m-%d").date()
             if day_date < startDate or day_date > endDate:
@@ -442,7 +427,7 @@ def plot_counter_averages(daily_counter_wastage, ax):
     ax.set_xlabel('Counter', fontsize=12, color="white")
     ax.set_ylabel('Average Wastage (grams)', fontsize=12, color="white")
 
-def spec_plot_weights(all_data, ax, ospec, start_date, end_date, cumulative, year_groups):
+def spec_plot_weights(all_data, ax, ospec, start_date, end_date, cumulative, year_groups = []):
     house_colors = {
         'Owens': '#FFA500',      # Bright Orange
         'Soong': '#FF0000',      # Bright Red
@@ -459,7 +444,11 @@ def spec_plot_weights(all_data, ax, ospec, start_date, end_date, cumulative, yea
 
     # Prepare data by member specification
     for member, member_data in all_data.items():
-        member_spec = member_data.get(ospec)
+        if ospec == 'staff':
+            member_spec = 'Student' if member_data.get('yeargroup', '') != '' else 'Staff'
+        else:
+            member_spec = member_data.get(ospec)
+        
         if not member_spec:
             continue
         if ospec == 'formclass' and member_data.get('yeargroup') not in year_groups:
@@ -469,7 +458,7 @@ def spec_plot_weights(all_data, ax, ospec, start_date, end_date, cumulative, yea
             member_count[member_spec] = {}
 
         for day, day_data in member_data.items():
-            if day in ['name', 'house', 'yeargroup', 'formclass']:
+            if day in ['name', 'house', 'yeargroup', 'formclass', 'balance']:
                 continue
             day_date = datetime.strptime(day, "%Y-%m-%d").date()
             if day_date < start_date or day_date > end_date:
@@ -550,7 +539,7 @@ def spec_plot_weights(all_data, ax, ospec, start_date, end_date, cumulative, yea
         for text in legend.get_texts():
             text.set_color("white")
 
-def plot_spec_average_wastage(all_data, ax, ospec, start_date, end_date, year_groups):
+def plot_spec_average_wastage(all_data, ax, ospec, start_date, end_date, year_groups = []):
     house_colors = {
         'Owens': '#FFA500',      # Bright Orange
         'Soong': '#FF0000',      # Bright Red for Soong
@@ -565,18 +554,31 @@ def plot_spec_average_wastage(all_data, ax, ospec, start_date, end_date, year_gr
                       '#FF7F50', '#6495ED', '#DC143C', '#00FFFF']
     
     total_wastage = defaultdict(float)
-    active_days = defaultdict(int)
+    total_items = defaultdict(int)
 
     # Prepare data by member specification
     for member, member_data in all_data.items():
-        member_spec = member_data.get(ospec)
+        if ospec == 'staff':
+            email = member_data.get('balance', '')
+            if not email:
+                continue
+            if email.endswith('@dulwich.org'):
+                member_spec = 'Staff'
+            elif email.endswith('@stu.dulwich.org'):
+                member_spec = 'Student'
+            else:
+                print("Third party: ", email)
+                continue
+        else:
+            member_spec = member_data.get(ospec)
+        
         if not member_spec:
             continue
         if ospec == 'formclass' and member_data.get('yeargroup') not in year_groups:
             continue
 
         for day, day_data in member_data.items():
-            if day in ['name', 'house', 'yeargroup', 'formclass']:
+            if day in ['name', 'house', 'yeargroup', 'formclass', 'balance']:
                 continue
             day_date = datetime.strptime(day, "%Y-%m-%d").date()
             if day_date < start_date or day_date > end_date:
@@ -586,21 +588,40 @@ def plot_spec_average_wastage(all_data, ax, ospec, start_date, end_date, year_gr
             if has_weights:
                 total_weight = sum(day_data['weights'])
                 total_wastage[member_spec] += total_weight
-                active_days[member_spec] += 1  # Count each day with data
+                if member_spec == 'Staff':
+                    print(f"Staff member: {member_data['name']}, Wastage: {total_weight} grams")
 
-    # Calculate daily average wastage per specification
-    avg_wastage_per_day = {
-        spec: total_wastage[spec] / active_days[spec] if active_days[spec] else 0
+            # Count the number of items purchased by all members in the category
+            if 'stations' in day_data:
+                total_items[member_spec] += len(day_data['stations'])
+
+    print(f"Calculated total items: {total_items}")
+
+    # Calculate average wastage per item
+    calculated_total_items = total_items.copy()  # Copy the calculated total items for debugging
+
+    # Use fixed values for student and staff purchases
+    total_items['Student'] = 567
+    total_items['Staff'] = 337
+
+    # Print the calculated numbers for debugging
+    print(f"Calculated total items: {calculated_total_items}")
+
+    avg_wastage_per_item = {
+        spec: total_wastage[spec] / total_items[spec] if total_items[spec] else 0
         for spec in total_wastage
     }
+    
+    # Print the average wastage per item for debugging
+    print(f"Average wastage per item: {avg_wastage_per_item}")
 
     # Sort specifications numerically if 'yeargroup' is specified
-    if ospec == 'yeargroup' and avg_wastage_per_day:
-        sorted_avg_wastage = sorted(avg_wastage_per_day.items(), key=lambda x: int(x[0]))
+    if ospec == 'yeargroup' and avg_wastage_per_item:
+        sorted_avg_wastage = sorted(avg_wastage_per_item.items(), key=lambda x: int(x[0]))
         specs, avg_wastages = zip(*sorted_avg_wastage)
     else:
-        specs = list(avg_wastage_per_day.keys())
-        avg_wastages = list(avg_wastage_per_day.values())
+        specs = list(avg_wastage_per_item.keys())
+        avg_wastages = list(avg_wastage_per_item.values())
 
     # Ensure there is data to plot
     if not specs or not avg_wastages:
@@ -614,14 +635,25 @@ def plot_spec_average_wastage(all_data, ax, ospec, start_date, end_date, year_gr
         colors = primary_colors[:len(specs)]  # Use primary colors if not 'house'
 
     # Plotting
-    bars = sns.barplot(x=specs, y=avg_wastages, ax=ax, palette=colors)
-    ax.set_title(f'Daily Average Wastage per Member by {ospec}', fontsize=16, color="white")
+    bars = sns.barplot(x=specs, y=avg_wastages, ax=ax, palette=colors, ci=None)
+    ax.set_title(f'Average Wastage per Item by {ospec}', fontsize=16, color="white")
     ax.set_xlabel(ospec.title(), fontsize=12, color="white")
-    ax.set_ylabel('Average Daily Wastage (grams)', fontsize=12, color="white")
+    ax.set_ylabel('Average Wastage per Item (grams)', fontsize=12, color="white")
 
     # Remove bar borders by setting edge color to face color
     for bar, color in zip(bars.patches, colors):
         bar.set_edgecolor(color)
+
+    # Add text annotations above the bars
+    for bar in bars.patches:
+        height = bar.get_height()
+        ax.annotate(f'{height:.2f}', 
+                    xy=(bar.get_x() + bar.get_width() / 2, height), 
+                    xytext=(0, 3),  # 3 points vertical offset
+                    textcoords="offset points", 
+                    ha='center', 
+                    color='white', 
+                    fontsize=10)
 
     # Adjust colors and styling for readability
     ax.tick_params(axis='x', colors='white', labelsize=12, rotation=45)
@@ -720,7 +752,7 @@ def plot_fullscreen(startDate, endDate, plots, metadata, line, cumulative, year_
             plot_counter_averages(metadata[5], ax)
             x_label = "Station"
             y_label = "Food Wastage (grams)"
-        elif plot_type in ['formclass', 'house', 'yeargroup']:
+        elif plot_type in ['formclass', 'house', 'yeargroup', 'staff']:
             if line:
                 spec_plot_weights(metadata[0], ax, plot_type, start_date=startDate, end_date=endDate, cumulative=cumulative, year_groups=year_groups)
                 x_label = "Date"
@@ -756,16 +788,16 @@ def plot_fullscreen(startDate, endDate, plots, metadata, line, cumulative, year_
                             color=(rgba_color[0], rgba_color[1], rgba_color[2], alpha),
                             linewidth=lw, zorder=-1)
 
-        desc = 'Last Wednesday' # Over Time
+        desc = 'Yesterday' # Over Time
         year = f' (Year {year_groups[0]})' if plot_type == 'formclass' else ''
         if line:   
             if cumulative:
                 ax.set_title(f"{plot_type.title()} Cumulative Food Waste {desc}{year}", fontsize=22, color="white", weight='bold', pad=20)
             else:
-                ax.set_title(f"{plot_type.title()} Average Food Waste(per Person) {desc}{year}", fontsize=22, color="white", weight='bold', pad=20)
+                ax.set_title(f"{plot_type.title()} Average Food Waste {desc}{year}", fontsize=22, color="white", weight='bold', pad=20)
         else:
-            ax.set_title(f"{plot_type.title()} Average Food Waste {desc}{year}", fontsize=22, color="white", weight='bold', pad=20)
-
+            ax.set_title("Student vs Staff Average Food Waste Yesterday", fontsize=22, color="white", weight='bold', pad=20)
+            #ax.set_title(f"{plot_type.title()} Average Food Waste {desc}{year}", fontsize=22, color="white", weight='bold', pad=20)
         ax.set_xlabel(x_label, fontsize=18, color="white", labelpad=15)
         ax.set_ylabel(y_label, fontsize=18, color="white", labelpad=15)
         
@@ -792,8 +824,8 @@ def test(startDateStr, endDateStr):
     #current_date = getDate()
     startDate = datetime.strptime(startDateStr, '%Y-%m-%d').date()
     endDate = datetime.strptime(endDateStr, '%Y-%m-%d').date()
-    all_data = report()
-    #all_data = load_data() # Load data from JSON file
+    #all_data = report()
+    all_data = load_data() # Load data from JSON file
     
     categories, both_counter_weights = categorize_data(all_data)
     for category, count in categories.items():
@@ -821,7 +853,7 @@ def test(startDateStr, endDateStr):
     '''
 
     #plots = ['counters', 'yeargroup', 'house', 'formclass', 'buys', 'counter_avg']
-    plots = ['yeargroup', 'house']
+    plots = ['yeargroup', 'house', 'staff']
     year_groups = ['9', '10', '11', '12', '13']
 
     plot_fullscreen(startDate, endDate, plots, metadata, True, True, year_groups) # Line? Cumulative? 
@@ -838,6 +870,6 @@ def test(startDateStr, endDateStr):
 
 if __name__ == "__main__":
     
-    test("2024-11-11", "2024-11-12")
+    test("2024-11-19", "2024-11-19")
     #getWeightsbyDate(datetime.strptime("2024-05-13", '%Y-%m-%d'), datetime.strptime("2024-05-15", '%Y-%m-%d'))
     #print(weight_data)
