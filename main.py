@@ -476,8 +476,8 @@ def spec_plot_weights(all_data, ax, ospec, start_date, end_date, cumulative, yea
     all_dates = sorted({date for spec_data in spec_wastage.values() for date in spec_data})
 
     # Debugging output to check for collected data
-    print(f"Dates for plotting: {all_dates}")
-    print(f"Collected spec_wastage: {spec_wastage}")
+    #print(f"Dates for plotting: {all_dates}")
+    #print(f"Collected spec_wastage: {spec_wastage}")
 
     # Ensure all_dates has at least one date, or return early if empty
     if not all_dates:
@@ -509,7 +509,7 @@ def spec_plot_weights(all_data, ax, ospec, start_date, end_date, cumulative, yea
             sorted_wastage = averaged_daily_wastage
 
         # Debugging output for calculated wastage
-        print(f"Spec: {spec}, Wastage Values: {sorted_wastage}")
+        #print(f"Spec: {spec}, Wastage Values: {sorted_wastage}")
 
         # Choose color based on ospec
         if ospec == 'house' and spec in house_colors:
@@ -538,6 +538,125 @@ def spec_plot_weights(all_data, ax, ospec, start_date, end_date, cumulative, yea
         legend.get_title().set_color("white")
         for text in legend.get_texts():
             text.set_color("white")
+
+def plot_daily_average_wastage(all_data, ax, ospec, start_date, end_date, year_groups = []):
+    house_colors = {
+        'Owens': '#FFA500',      # Bright Orange
+        'Soong': '#FF0000',      # Bright Red for Soong
+        'Alleyn': '#9B30FF',     # Brightened Purple for Alleyn
+        'Johnson': '#1E90FF',    # Bright Blue
+        'Wodehouse': '#32CD32'   # Lime Green
+    }
+    
+    # Define primary colors for non-house categories
+    primary_colors = ['#FF5733', '#33FF57', '#3357FF', '#FF33A5', '#FFC300', '#33FFF9', '#FF5733', 
+                      '#C70039', '#900C3F', '#581845', '#FFD700', '#8A2BE2', '#7FFF00', '#D2691E', 
+                      '#FF7F50', '#6495ED', '#DC143C', '#00FFFF']
+    
+    daily_wastage = defaultdict(lambda: defaultdict(float))
+    daily_items = defaultdict(lambda: defaultdict(int))
+
+    # Prepare data by member specification
+    for member, member_data in all_data.items():
+        if ospec == 'staff':
+            email = member_data.get('balance', '')
+            if not email:
+                continue
+            if email.endswith('@dulwich.org'):
+                member_spec = 'Staff'
+            elif email.endswith('@stu.dulwich.org'):
+                member_spec = 'Student'
+            else:
+                print("Third party: ", email)
+                continue
+        else:
+            member_spec = member_data.get(ospec)
+        
+        if not member_spec:
+            continue
+        if ospec == 'formclass' and member_data.get('yeargroup') not in year_groups:
+            continue
+
+        for day, day_data in member_data.items():
+            if day in ['name', 'house', 'yeargroup', 'formclass', 'balance']:
+                continue
+            day_date = datetime.strptime(day, "%Y-%m-%d").date()
+            if day_date < start_date or day_date > end_date:
+                continue
+            
+            has_weights = 'weights' in day_data and day_data['weights']
+            if has_weights:
+                total_weight = sum(day_data['weights'])
+                daily_wastage[day_date][member_spec] += total_weight
+
+            # Count the number of items purchased by all members in the category
+            if 'stations' in day_data:
+                daily_items[day_date][member_spec] += len(day_data['stations'])
+
+    staff_nums = {'2024-11-19': 337, '2024-11-20': 339}
+    # Calculate daily average wastage per item
+    daily_avg_wastage = defaultdict(dict)
+    for day_date in daily_wastage:
+        for spec in daily_wastage[day_date]:
+            '''if daily_items[day_date][spec] > 0:
+                daily_avg_wastage[day_date][spec] = daily_wastage[day_date][spec] / daily_items[day_date][spec]
+            else:
+                daily_avg_wastage[day_date][spec] = 0'''
+            if spec == 'Staff':
+                daily_avg_wastage[day_date][spec] = daily_wastage[day_date][spec] / staff_nums.get(str(day_date), 0)
+            elif daily_items[day_date][spec] > 0 and spec == 'Student':
+                daily_avg_wastage[day_date][spec] = daily_wastage[day_date][spec] / daily_items[day_date][spec]
+            else:
+                daily_avg_wastage[day_date][spec] = 0
+
+    # Prepare data for plotting
+    plot_data = []
+    for day_date in sorted(daily_avg_wastage):
+        for spec in daily_avg_wastage[day_date]:
+            plot_data.append({
+                'Date': day_date,
+                'Category': spec,
+                'Average Wastage': daily_avg_wastage[day_date][spec]
+            })
+
+    # Convert to DataFrame for seaborn
+    plot_df = pd.DataFrame(plot_data)
+
+    # Choose colors based on ospec
+    if ospec == 'house':
+        palette = [house_colors.get(spec, "#4B0082") for spec in plot_df['Category'].unique()]  # Default to indigo if color not in house_colors
+    else:
+        palette = primary_colors[:len(plot_df['Category'].unique())]  # Use primary colors if not 'house'
+
+    # Plotting
+    bars = sns.barplot(x='Date', y='Average Wastage', hue='Category', data=plot_df, ax=ax, palette=palette, ci=None)
+    ax.set_title(f'Daily Average Wastage per Item by {ospec}', fontsize=16, color="white")
+    ax.set_xlabel('Date', fontsize=12, color="white")
+    ax.set_ylabel('Average Wastage per Item (grams)', fontsize=12, color="white")
+
+    # Remove bar borders by setting edge color to face color
+    for bar in bars.patches:
+        bar.set_edgecolor(bar.get_facecolor())
+
+    # Add text annotations above the bars
+    for bar in bars.patches:
+        height = bar.get_height()
+        ax.annotate(f'{height:.2f}', 
+                    xy=(bar.get_x() + bar.get_width() / 2, height), 
+                    xytext=(0, 3),  # 3 points vertical offset
+                    textcoords="offset points", 
+                    ha='center', 
+                    color='white', 
+                    fontsize=10)
+
+    # Adjust colors and styling for readability
+    ax.tick_params(axis='x', colors='white', labelsize=12, rotation=45)
+    ax.tick_params(axis='y', colors='white', labelsize=12)
+    for spine in ax.spines.values():
+        spine.set_edgecolor('white')
+    ax.yaxis.label.set_color('white')
+    ax.xaxis.label.set_color('white')
+    ax.title.set_color('white')
 
 def plot_spec_average_wastage(all_data, ax, ospec, start_date, end_date, year_groups = []):
     house_colors = {
@@ -601,11 +720,11 @@ def plot_spec_average_wastage(all_data, ax, ospec, start_date, end_date, year_gr
     calculated_total_items = total_items.copy()  # Copy the calculated total items for debugging
 
     # Use fixed values for student and staff purchases
-    total_items['Student'] = 567
-    total_items['Staff'] = 337
+    #total_items['Student'] = 567
+    total_items['Staff'] = 337 #337+339
 
     # Print the calculated numbers for debugging
-    print(f"Calculated total items: {calculated_total_items}")
+    #print(f"Calculated total items: {calculated_total_items}")
 
     avg_wastage_per_item = {
         spec: total_wastage[spec] / total_items[spec] if total_items[spec] else 0
@@ -613,7 +732,7 @@ def plot_spec_average_wastage(all_data, ax, ospec, start_date, end_date, year_gr
     }
     
     # Print the average wastage per item for debugging
-    print(f"Average wastage per item: {avg_wastage_per_item}")
+    #print(f"Average wastage per item: {avg_wastage_per_item}")
 
     # Sort specifications numerically if 'yeargroup' is specified
     if ospec == 'yeargroup' and avg_wastage_per_item:
@@ -752,6 +871,10 @@ def plot_fullscreen(startDate, endDate, plots, metadata, line, cumulative, year_
             plot_counter_averages(metadata[5], ax)
             x_label = "Station"
             y_label = "Food Wastage (grams)"
+        elif plot_type == 'staff':
+            plot_daily_average_wastage(metadata[0], ax, plot_type, startDate, endDate)
+            x_label = "Date"
+            y_label = "Food Wastage (grams)"
         elif plot_type in ['formclass', 'house', 'yeargroup', 'staff']:
             if line:
                 spec_plot_weights(metadata[0], ax, plot_type, start_date=startDate, end_date=endDate, cumulative=cumulative, year_groups=year_groups)
@@ -796,7 +919,7 @@ def plot_fullscreen(startDate, endDate, plots, metadata, line, cumulative, year_
             else:
                 ax.set_title(f"{plot_type.title()} Average Food Waste {desc}{year}", fontsize=22, color="white", weight='bold', pad=20)
         else:
-            ax.set_title("Student vs Staff Average Food Waste Yesterday", fontsize=22, color="white", weight='bold', pad=20)
+            ax.set_title(f"Student vs Staff Average Food Waste {desc}", fontsize=22, color="white", weight='bold', pad=20)
             #ax.set_title(f"{plot_type.title()} Average Food Waste {desc}{year}", fontsize=22, color="white", weight='bold', pad=20)
         ax.set_xlabel(x_label, fontsize=18, color="white", labelpad=15)
         ax.set_ylabel(y_label, fontsize=18, color="white", labelpad=15)
@@ -853,23 +976,24 @@ def test(startDateStr, endDateStr):
     '''
 
     #plots = ['counters', 'yeargroup', 'house', 'formclass', 'buys', 'counter_avg']
-    plots = ['yeargroup', 'house', 'staff']
+    plots = ['staff']
     year_groups = ['9', '10', '11', '12', '13']
 
-    plot_fullscreen(startDate, endDate, plots, metadata, True, True, year_groups) # Line? Cumulative? 
-    plot_fullscreen(startDate, endDate, plots, metadata, True, False, year_groups)
+    #plot_fullscreen(startDate, endDate, plots, metadata, True, True, year_groups) # Line? Cumulative? 
+    #plot_fullscreen(startDate, endDate, plots, metadata, True, False, year_groups)
     plot_fullscreen(startDate, endDate, plots, metadata, False, False, year_groups)
 
-    plots = ['formclass']
+    '''plots = ['formclass']
     
     for year_group in year_groups:
         year_list = [year_group]
         plot_fullscreen(startDate, endDate, plots, metadata, True, False, year_list)
         plot_fullscreen(startDate, endDate, plots, metadata, True, True, year_list)
         plot_fullscreen(startDate, endDate, plots, metadata, False, False, year_list)
+    '''
 
 if __name__ == "__main__":
     
-    test("2024-11-19", "2024-11-19")
+    test("2024-11-19", "2024-11-20")
     #getWeightsbyDate(datetime.strptime("2024-05-13", '%Y-%m-%d'), datetime.strptime("2024-05-15", '%Y-%m-%d'))
     #print(weight_data)
