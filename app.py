@@ -13,7 +13,11 @@ from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg
 from matplotlib.figure import Figure
 import matplotlib.image as mpimg
 
-from main import load_data, report, analyze_data, plot
+import os
+import subprocess
+import sys
+
+from main import load_data, report, analyze_data, plot, get_last_date, test
 
 current_date = datetime.date.today().isoformat()
 
@@ -156,11 +160,11 @@ def signin():
 def mode_choice():
     root = setup_window("Mode Choice", 1)
 
-    # Create two buttons for mode choice
+    '''# Create two buttons for mode choice
     button_mode1 = tk.Button(root, text="Real Time", command=lambda: [root.destroy(), realtime_menu()], font=button_font)
-    button_mode1.grid(row=2, column=0, sticky='ew')
+    button_mode1.grid(row=2, column=0, sticky='ew')'''
     button_mode2 = tk.Button(root, text="Recap", command=lambda: [root.destroy(), recap_menu()], font=button_font)
-    button_mode2.grid(row=2, column=1, sticky='ew')
+    button_mode2.grid(row=2, column=0, sticky='ew')
 
     # Create a signout button
     button_signout = tk.Button(root, text="Sign Out", width=10, command=lambda: [root.destroy(), signin()], font=small_button_font)
@@ -196,19 +200,24 @@ def select_date(root, date_var):
         else:
             messagebox.showerror("Error", "The date cannot be in the future.")
 
-    
     top = tk.Toplevel(root)
     top.title("Select Date")
-    cal = DateEntry(top, width=12, background='light grey', foreground='purple', borderwidth=2, font=calendar_font)
+    
+    # Get the current value of date_var and set it as the initial date for the DateEntry
+    current_date = date_var.get()
+    if current_date:
+        initial_date = datetime.date.fromisoformat(current_date)
+    else:
+        initial_date = datetime.date.today()
+    
+    cal = DateEntry(top, width=12, background='light grey', foreground='purple', borderwidth=2, font=calendar_font, year=initial_date.year, month=initial_date.month, day=initial_date.day)
     cal.pack(padx=10, pady=10)
 
     button_ok = tk.Button(top, text="OK", command=update_date)
     button_ok.pack(pady=10)
 
 def regenerate_data():
-    start_date = "2024-05-13"
-    end_date = current_date
-    all_data = report(start_date, end_date)
+    all_data = report()
     if all_data:
         messagebox.showinfo("Success", "Data regenerated successfully.")
     else:
@@ -238,6 +247,21 @@ def add_plot(startDate, endDate, preset, continous, all_data, customs = None):
             messagebox.showerror("Error", "No custom options selected.")
             return
         plots = customs
+    elif preset == "TV":
+        test(startDate.strftime("%Y-%m-%d"), endDate.strftime("%Y-%m-%d"))
+        # Open the plot file location
+        plot_file_location = "full_plots"
+        if os.path.exists(plot_file_location):
+            if os.name == 'nt':  # For Windows
+                os.startfile(plot_file_location)
+            elif os.name == 'posix':  # For macOS and Linux
+                if sys.platform == 'darwin':  # macOS
+                    subprocess.run(['open', plot_file_location])
+                else:  # Linux
+                    subprocess.run(['xdg-open', plot_file_location])
+        else:
+            print(f"Plot file location does not exist: {plot_file_location}")
+        return
 
     if "formclass" in plots:
         # Prompt the user to enter a list of year groups
@@ -281,7 +305,8 @@ def recap_menu():
     root = setup_window("Recap Menu", 1)
 
     startDate = tk.StringVar(root, value="2024-05-13")
-    endDate = tk.StringVar(root, value=current_date)
+    endDate = tk.StringVar(root, value=str(get_last_date().date()))
+    #endDate = tk.StringVar(root, value=current_date)
 
     # Add a back button
     button_back = tk.Button(root, text="Back", width=10, command=lambda: [root.destroy(), mode_choice()], font=small_button_font)
@@ -290,7 +315,7 @@ def recap_menu():
     listbox = None # Initialize the listbox variable
     custom_window = None #
 
-    presets = ["Student", "Sodexo", "All", "Custom"]
+    presets = ["Student", "Sodexo", "All", "Custom", "TV"]
     
     def get_selected_options(preset_var):
         nonlocal listbox  # Use the outer variable
@@ -367,8 +392,8 @@ def recap_menu():
     button_add_plot = tk.Button(root, text="Preview", command=lambda: add_plot(startDate, endDate, preset_var.get(), continuous_var.get(), all_data, get_selected_options(preset_var)), font=button_font) # Add plot
     button_add_plot.grid(row=5, column=0, sticky='ew')
 
-    button_send_mail = tk.Button(root, text="Send Mail", command=ask_credentials, font=button_font) # sender, recipient
-    button_send_mail.grid(row=5, column=1, sticky='ew')
+    '''button_send_mail = tk.Button(root, text="Send Mail", command=ask_credentials, font=button_font) # sender, recipient
+    button_send_mail.grid(row=5, column=1, sticky='ew')'''
 
     # Configure the grid to expand properly when the window is resized
     for i in range(3):
