@@ -126,7 +126,8 @@ def authenticate(entry_username, entry_password, root):
     if username == "admin" and password == "pw":
         #messagebox.showinfo("Login Success", "Welcome, Admin!")
         root.destroy()  # Close the login window
-        mode_choice()  # Transition to the next screen
+        recap_menu()
+        #mode_choice()  # Transition to the next screen
     else:
         messagebox.showerror("Login Failed", "Invalid username or password.")
 
@@ -182,7 +183,9 @@ def realtime_menu():
     root = setup_window("Real-time Menu", 1)
 
     # Add a back button
-    button_back = tk.Button(root, text="Back", command=lambda: [root.destroy(), mode_choice()], font=small_button_font)
+    #button_back = tk.Button(root, text="Back", command=lambda: [root.destroy(), mode_choice()], font=small_button_font)
+    
+    button_back = tk.Button(root, text="Sign Out", command=lambda: [root.destroy(), signin()], font=small_button_font)
     button_back.grid(row=0, column=0, sticky='ew')
 
     # Configure the grid to expand properly when the window is resized
@@ -309,7 +312,8 @@ def recap_menu():
     #endDate = tk.StringVar(root, value=current_date)
 
     # Add a back button
-    button_back = tk.Button(root, text="Back", width=10, command=lambda: [root.destroy(), mode_choice()], font=small_button_font)
+    #button_back = tk.Button(root, text="Back", width=10, command=lambda: [root.destroy(), mode_choice()], font=small_button_font)
+    button_back = tk.Button(root, text="Sign Out", command=lambda: [root.destroy(), signin()], font=small_button_font)
     button_back.grid(row=0, column=0, sticky='ew')
 
     listbox = None # Initialize the listbox variable
