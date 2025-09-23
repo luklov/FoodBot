@@ -401,6 +401,11 @@ def cumulative_plot_waste(all_data, ax, startDate, endDate):
     ax.set_xlabel('Date', fontsize=12, color="white")
     ax.set_ylabel('Total Wastage (grams)', fontsize=12, color="white")
     ax.legend(loc='upper left', fontsize=10)
+    ax.xaxis.label.set_color('white')
+    ax.yaxis.label.set_color('white')
+    ax.tick_params(axis='x', colors='white')
+    ax.tick_params(axis='y', colors='white')
+    ax.xaxis.set_major_formatter(mdates.DateFormatter('%m-%d'))
 
 def cumulative_plot_buys(counter_purchases, ax):
     cumulative_counter_purchases = {}
@@ -421,6 +426,11 @@ def cumulative_plot_buys(counter_purchases, ax):
     ax.set_xlabel('Date', fontsize=12, color="white")
     ax.set_ylabel('Total Buys', fontsize=12, color="white")
     ax.legend(loc='upper left', fontsize=10)
+    ax.xaxis.label.set_color('white')
+    ax.yaxis.label.set_color('white')
+    ax.tick_params(axis='x', colors='white')
+    ax.tick_params(axis='y', colors='white')
+    ax.xaxis.set_major_formatter(mdates.DateFormatter('%m-%d'))
 
 def plot_counter_averages(daily_counter_wastage, ax):
     averages = []
@@ -438,6 +448,10 @@ def plot_counter_averages(daily_counter_wastage, ax):
     ax.set_title('Counter Averages Over Time', fontsize=16, color="white")
     ax.set_xlabel('Counter', fontsize=12, color="white")
     ax.set_ylabel('Average Wastage (grams)', fontsize=12, color="white")
+    ax.xaxis.label.set_color('white')
+    ax.yaxis.label.set_color('white')
+    ax.tick_params(axis='x', colors='white')
+    ax.tick_params(axis='y', colors='white')
 
 def spec_plot_weights(all_data, ax, ospec, start_date, end_date, cumulative, year_groups = []):
     house_colors = {
@@ -538,6 +552,11 @@ def spec_plot_weights(all_data, ax, ospec, start_date, end_date, cumulative, yea
     ax.set_title(f'{title_type} Wastage Over Time by {ospec}', fontsize=16, color="white")
     ax.set_xlabel('Date', fontsize=12, color="white")
     ax.set_ylabel('Wastage (grams)', fontsize=12, color="white")
+    ax.xaxis.label.set_color('white')
+    ax.yaxis.label.set_color('white')
+    ax.tick_params(axis='x', colors='white')
+    ax.tick_params(axis='y', colors='white')
+    ax.xaxis.set_major_formatter(mdates.DateFormatter('%m-%d'))
 
     # Apply consistent legend styling
     handles, labels = ax.get_legend_handles_labels()
